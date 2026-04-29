@@ -1,0 +1,9 @@
+{
+  "name": "eslaposta-root",
+  "version": "1.0.0",
+  "scripts": {
+    "install-all": "npm install && cd client && npm install",
+    "build": "cd client && npm run build",
+    "start": "node server/index.js"
+  }
+}
