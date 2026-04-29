@@ -2,8 +2,15 @@
   "name": "eslaposta-root",
   "version": "1.0.0",
   "scripts": {
-    "install-all": "npm install && cd client && npm install",
-    "build": "cd client && npm run build",
+    "build": "cd client && npm install && npm run build",
     "start": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "sqlite3": "^6.0.1",
+    "cors": "^2.8.6",
+    "body-parser": "^2.2.2",
+    "express-rate-limit": "^8.4.1",
+    "xss": "^1.0.15"
   }
 }
