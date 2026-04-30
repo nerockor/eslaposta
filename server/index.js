@@ -2,8 +2,11 @@ console.log('>>> [DEBUG] EL ARCHIVO INDEX.JS SE ESTA EJECUTANDO');
 console.log('>>> [DEBUG] FECHA:', new Date().toISOString());
 
 const express = require('express');
+console.log('>>> [DEBUG] EXPRESS CARGADO');
 const sqlite3 = require('sqlite3').verbose();
+console.log('>>> [DEBUG] SQLITE3 CARGADO');
 const cors = require('cors');
+console.log('>>> [DEBUG] CORS CARGADO');
 const bodyParser = require('body-parser');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
