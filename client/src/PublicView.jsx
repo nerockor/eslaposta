@@ -44,6 +44,7 @@ const PublicView = () => {
   const [selectedBarrio, setSelectedBarrio] = useState(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [barrioFilterOpen, setBarrioFilterOpen] = useState(false);
+  const [categories, setCategories] = useState([]);
   const [spinTrigger, setSpinTrigger] = useState(0);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -54,9 +55,10 @@ const PublicView = () => {
   }, []);
 
   useEffect(() => {
-    if (ads.length > 0 && !featuredAd) {
-      const activeAds = ads.filter(a => a.expiration_date ? new Date(a.expiration_date) > new Date() : true);
-      const listToPick = activeAds.length > 0 ? activeAds : ads;
+    const safeAds = Array.isArray(ads) ? ads : [];
+    if (safeAds.length > 0 && !featuredAd) {
+      const activeAds = safeAds.filter(a => a.expiration_date ? new Date(a.expiration_date) > new Date() : true);
+      const listToPick = activeAds.length > 0 ? activeAds : safeAds;
       const randomAd = listToPick[Math.floor(Math.random() * listToPick.length)];
       
       axios.post(`${API_URL}/batch`, { ids: [randomAd.id] }).then(res => {
@@ -69,6 +71,7 @@ const PublicView = () => {
 
   useEffect(() => {
     fetchMetadata();
+    fetchCategories();
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -173,8 +176,18 @@ const PublicView = () => {
     }
   };
 
+  const fetchCategories = async () => {
+    try {
+      const res = await axios.get('/api/categories');
+      setCategories(res.data);
+    } catch (err) {
+      console.error('Error fetching categories', err);
+    }
+  };
+
   const fetchVisibleImages = useCallback(async () => {
-    if (ads.length === 0 || isFetchingBatch) return;
+    const safeAds = Array.isArray(ads) ? ads : [];
+    if (safeAds.length === 0 || isFetchingBatch) return;
 
     // Calculate viewport bounds in world coordinates
     if (!canvasRef.current) return;
@@ -185,7 +198,7 @@ const PublicView = () => {
     const maxY = (rect.height - transform.y) / transform.scale;
 
     // Find ads in viewport that don't have images loaded
-    const visibleUnloaded = ads.filter(ad => 
+    const visibleUnloaded = safeAds.filter(ad => 
       ad.x + ad.width >= minX && ad.x <= maxX &&
       ad.y + ad.height >= minY && ad.y <= maxY &&
       !loadedImageIds.has(ad.id)
@@ -218,7 +231,7 @@ const PublicView = () => {
     } finally {
       setIsFetchingBatch(false);
     }
-  }, [ads, transform, loadedImageIds, isFetchingBatch]);
+  }, [ads, transform, loadedImageIds, isFetchingBatch, imageObjects]);
 
   // Run lazy loader when transform or ads change
   useEffect(() => {
@@ -241,7 +254,14 @@ const PublicView = () => {
     ctx.lineWidth = 0.5;
     
     // 1. Draw all background ads (the grid squares)
-    ads.forEach(ad => {
+    const validAds = Array.isArray(ads) ? ads : [];
+    const filteredAds = validAds.filter(ad => {
+      const isFilteredOut = (selectedCategory && ad.category !== selectedCategory) || 
+                           (selectedBarrio && ad.barrio !== selectedBarrio);
+      return !isFilteredOut;
+    });
+
+    filteredAds.forEach(ad => {
       if (ad.id === hoveredAd?.id) return;
       
       const img = imageObjects[ad.id];
@@ -307,7 +327,7 @@ const PublicView = () => {
     ctx.lineWidth = 2 / transform.scale;
     ctx.strokeRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-  }, [ads, transform, hoveredAd, imageObjects, selectedCategory]);
+  }, [ads, transform, hoveredAd, imageObjects, selectedCategory, selectedBarrio]);
 
   const handleMouseDown = (e) => {
     setIsDragging(true);
@@ -340,7 +360,8 @@ const PublicView = () => {
     const mouseX = (e.clientX - rect.left - transform.x) / transform.scale;
     const mouseY = (e.clientY - rect.top - transform.y) / transform.scale;
     
-    const found = ads.find(ad => 
+    const safeAds = Array.isArray(ads) ? ads : [];
+    const found = safeAds.find(ad => 
       mouseX >= ad.x && mouseX <= ad.x + ad.width &&
       mouseY >= ad.y && mouseY <= ad.y + ad.height
     );
@@ -398,7 +419,7 @@ const PublicView = () => {
     >
       {isMobile ? (
         <MobileSphereView 
-          ads={ads.filter(a => {
+          ads={(Array.isArray(ads) ? ads : []).filter(a => {
             if (selectedCategory && a.category !== selectedCategory) return false;
             if (selectedBarrio && a.barrio !== selectedBarrio) return false;
             return true;
@@ -414,116 +435,154 @@ const PublicView = () => {
         <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} className="absolute inset-0" />
       )}
 
-      {/* Category Filter — Compact Dropdown (Only Desktop) */}
+      {/* Desktop Filters (Top Left) */}
       {!isMobile && (
         <div className="absolute top-5 left-5 z-[60] pointer-events-auto flex flex-col gap-3">
-          {/* Rubro Filter */}
-          <div className="relative">
-            <button
-              onClick={(e) => { e.stopPropagation(); setFilterOpen(!filterOpen); setBarrioFilterOpen(false); }}
-              className={`w-52 flex items-center justify-between px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 backdrop-blur-xl border shadow-lg ${
-                selectedCategory
-                  ? 'bg-indigo-600/90 text-white border-indigo-400/40 shadow-indigo-600/30'
-                  : 'bg-slate-900/80 text-slate-300 border-white/10 shadow-black/20 hover:bg-slate-800/90 hover:border-white/15'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Filter size={14} />
-                <span className="truncate">{selectedCategory || 'Filtrar Rubro'}</span>
-              </div>
-              <ChevronDown size={14} className={`transition-transform duration-300 ${filterOpen ? 'rotate-180' : ''}`} />
-            </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setFilterOpen(!filterOpen); setBarrioFilterOpen(false); }}
+            className={`w-52 flex items-center justify-between px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 backdrop-blur-xl border shadow-lg ${
+              selectedCategory
+                ? 'bg-indigo-600/90 text-white border-indigo-400/40 shadow-indigo-600/30'
+                : 'bg-slate-900/80 text-slate-300 border-white/10 shadow-black/20 hover:bg-slate-800/90 hover:border-white/15'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Filter size={14} />
+              <span className="truncate">{selectedCategory || 'Filtrar Rubro'}</span>
+            </div>
+            <ChevronDown size={14} className={`transition-transform duration-300 ${filterOpen ? 'rotate-180' : ''}`} />
+          </button>
 
-            {filterOpen && (
-              <div
-                className="absolute top-14 left-0 w-80 max-h-[60vh] overflow-y-auto no-scrollbar rounded-2xl border border-white/10 bg-slate-950/95 backdrop-blur-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] p-4"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  onClick={() => { setSelectedCategory(null); setFilterOpen(false); }}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl mb-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-                    !selectedCategory
-                      ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30'
-                      : 'bg-slate-900/60 text-slate-500 border border-transparent hover:bg-slate-800/80 hover:text-slate-300'
-                  }`}
-                >
-                  <span>Mostrar Todos los Rubros</span>
-                  {selectedCategory && <X size={12} />}
-                </button>
-                <div className="grid grid-cols-2 gap-2">
-                  {RUBROS.map(r => {
-                    const isActive = selectedCategory === r;
-                    return (
-                      <button
-                        key={r}
-                        onClick={() => { setSelectedCategory(isActive ? null : r); setFilterOpen(false); }}
-                        className={`px-3 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-wide transition-all text-left ${
-                          isActive ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-900/50 text-slate-400 hover:bg-slate-800/70'
-                        }`}
-                      >
-                        {r}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Barrio Filter */}
-          <div className="relative">
-            <button
-              onClick={(e) => { e.stopPropagation(); setBarrioFilterOpen(!barrioFilterOpen); setFilterOpen(false); }}
-              className={`w-52 flex items-center justify-between px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 backdrop-blur-xl border shadow-lg ${
-                selectedBarrio
-                  ? 'bg-emerald-600/90 text-white border-emerald-400/40 shadow-emerald-600/30'
-                  : 'bg-slate-900/80 text-slate-300 border-white/10 shadow-black/20 hover:bg-slate-800/90 hover:border-white/15'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <MapPin size={14} />
-                <span className="truncate">{selectedBarrio || 'Filtrar Barrio'}</span>
-              </div>
-              <ChevronDown size={14} className={`transition-transform duration-300 ${barrioFilterOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {barrioFilterOpen && (
-              <div
-                className="absolute top-14 left-0 w-80 max-h-[60vh] overflow-y-auto no-scrollbar rounded-2xl border border-white/10 bg-slate-950/95 backdrop-blur-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] p-4"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  onClick={() => { setSelectedBarrio(null); setBarrioFilterOpen(false); }}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl mb-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-                    !selectedBarrio
-                      ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                      : 'bg-slate-900/60 text-slate-500 border border-transparent hover:bg-slate-800/80 hover:text-slate-300'
-                  }`}
-                >
-                  <span>Cualquier Barrio</span>
-                  {selectedBarrio && <X size={12} />}
-                </button>
-                <div className="grid grid-cols-2 gap-2">
-                  {BARRIOS.map(b => {
-                    const isActive = selectedBarrio === b;
-                    return (
-                      <button
-                        key={b}
-                        onClick={() => { setSelectedBarrio(isActive ? null : b); setBarrioFilterOpen(false); }}
-                        className={`px-3 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-wide transition-all text-left ${
-                          isActive ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-900/50 text-slate-400 hover:bg-slate-800/70'
-                        }`}
-                      >
-                        {b}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); setBarrioFilterOpen(!barrioFilterOpen); setFilterOpen(false); }}
+            className={`w-52 flex items-center justify-between px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 backdrop-blur-xl border shadow-lg ${
+              selectedBarrio
+                ? 'bg-emerald-600/90 text-white border-emerald-400/40 shadow-emerald-600/30'
+                : 'bg-slate-900/80 text-slate-300 border-white/10 shadow-black/20 hover:bg-slate-800/90 hover:border-white/15'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <MapPin size={14} />
+              <span className="truncate">{selectedBarrio || 'Filtrar Barrio'}</span>
+            </div>
+            <ChevronDown size={14} className={`transition-transform duration-300 ${barrioFilterOpen ? 'rotate-180' : ''}`} />
+          </button>
         </div>
       )}
+
+      {/* Dropdown Portals (Global - Center on mobile, Top-left on desktop) */}
+      <div 
+        onClick={() => { setFilterOpen(false); setBarrioFilterOpen(false); }}
+        className={`fixed z-[100] pointer-events-none flex flex-col gap-3 transition-all duration-500 ${
+        isMobile 
+          ? 'inset-0 items-center justify-center p-4 bg-slate-950/40 backdrop-blur-md' 
+          : 'top-5 left-5'
+      } ${filterOpen || barrioFilterOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+          
+          {/* Rubro Dropdown Container */}
+          <div className={`relative pointer-events-auto transition-all duration-300 ${
+            filterOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0 hidden'
+          }`}>
+            <div
+              className={`w-80 max-h-[60vh] overflow-y-auto no-scrollbar rounded-3xl border border-white/20 bg-slate-900/95 backdrop-blur-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,1)] p-5`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400">Seleccionar Rubro</h3>
+                <button onClick={() => setFilterOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                  <X size={16} className="text-slate-400" />
+                </button>
+              </div>
+
+              <button
+                onClick={() => { setSelectedCategory(null); setFilterOpen(false); }}
+                className={`w-full flex items-center justify-between px-4 py-4 rounded-2xl mb-4 text-[10px] font-black uppercase tracking-widest transition-all ${
+                  !selectedCategory
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                    : 'bg-slate-800/50 text-slate-400 border border-white/5 hover:bg-slate-800'
+                }`}
+              >
+                <span>Mostrar Todos</span>
+                {!selectedCategory && <Filter size={12} />}
+              </button>
+              
+              <div className="grid grid-cols-2 gap-3">
+                {(() => {
+                  const arr = (Array.isArray(categories) && categories.length > 0) 
+                    ? categories.map(cat => ({ id: cat.id, name: cat.name }))
+                    : RUBROS.map((r, i) => ({ id: i, name: r }));
+                  
+                  console.log('>>> RENDERIZANDO MENU RUBROS. Elementos:', arr.length, 'filterOpen:', filterOpen);
+                  
+                  return arr.map(item => {
+                    const isActive = selectedCategory === item.name;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => { setSelectedCategory(isActive ? null : item.name); setFilterOpen(false); }}
+                        className={`px-4 py-4 rounded-2xl text-[9px] font-black uppercase tracking-wide transition-all text-center border ${
+                          isActive 
+                            ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' 
+                            : 'bg-slate-800/30 border-white/5 text-slate-400 hover:bg-slate-800 hover:text-white hover:border-white/20'
+                        }`}
+                      >
+                        {item.name}
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          </div>
+
+          {/* Barrio Dropdown Container */}
+          <div className={`relative pointer-events-auto transition-all duration-300 ${
+            barrioFilterOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0 hidden'
+          }`}>
+            <div
+              className={`w-80 max-h-[60vh] overflow-y-auto no-scrollbar rounded-3xl border border-white/20 bg-slate-900/95 backdrop-blur-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,1)] p-5`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Seleccionar Barrio</h3>
+                <button onClick={() => setBarrioFilterOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                  <X size={16} className="text-slate-400" />
+                </button>
+              </div>
+
+              <button
+                onClick={() => { setSelectedBarrio(null); setBarrioFilterOpen(false); }}
+                className={`w-full flex items-center justify-between px-4 py-4 rounded-2xl mb-4 text-[10px] font-black uppercase tracking-widest transition-all ${
+                  !selectedBarrio
+                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
+                    : 'bg-slate-800/50 text-slate-400 border border-white/5 hover:bg-slate-800'
+                }`}
+              >
+                <span>Cualquier Barrio</span>
+                {!selectedBarrio && <MapPin size={12} />}
+              </button>
+
+              <div className="grid grid-cols-2 gap-3">
+                {BARRIOS.map(b => {
+                  const isActive = selectedBarrio === b;
+                  return (
+                    <button
+                      key={b}
+                      onClick={() => { setSelectedBarrio(isActive ? null : b); setBarrioFilterOpen(false); }}
+                      className={`px-4 py-4 rounded-2xl text-[9px] font-black uppercase tracking-wide transition-all text-center border ${
+                        isActive 
+                          ? 'bg-emerald-600 border-emerald-400 text-white shadow-lg' 
+                          : 'bg-slate-800/30 border-white/5 text-slate-400 hover:bg-slate-800 hover:text-white hover:border-white/20'
+                      }`}
+                    >
+                      {b}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+      </div>
 
       {/* Featured Ad — Bottom Center (Only Desktop) */}
       {!isMobile && showIsland && featuredAd && (
@@ -768,21 +827,38 @@ const PublicView = () => {
           {/* Botonera de Acciones (Filtros y Mapa) */}
           <div style={{ display: 'flex', gap: '8px', padding: '10px 15px 5px 15px', borderTop: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#020617' }}>
             <button 
-              onClick={() => {
-                 const rubros = ['Todos', ...RUBROS];
-                 const currentIdx = selectedCategory ? rubros.indexOf(selectedCategory) : 0;
-                 const nextIdx = (currentIdx + 1) % rubros.length;
-                 setSelectedCategory(nextIdx === 0 ? null : rubros[nextIdx]);
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setBarrioFilterOpen(false);
+                setFilterOpen(true);
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setBarrioFilterOpen(false);
+                setFilterOpen(true);
               }}
               className={`cyber-btn ${selectedCategory ? 'active' : ''}`}
-              style={{ flex: 1, height: '40px', borderRadius: '10px', fontSize: '9px', fontWeight: '900', color: '#c9c9c9' }}
+              style={{ flex: 1, height: '40px', borderRadius: '10px', fontSize: '9px', fontWeight: '900', color: '#c9c9c9', zIndex: 80 }}
             >
               RUBRO: {selectedCategory || 'TODOS'}
             </button>
             <button 
-              onClick={() => setBarrioFilterOpen(true)}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setFilterOpen(false);
+                setBarrioFilterOpen(true);
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setFilterOpen(false);
+                setBarrioFilterOpen(true);
+              }}
               className={`cyber-btn ${selectedBarrio ? 'active' : ''}`}
-              style={{ flex: 1, height: '40px', borderRadius: '10px', fontSize: '9px', fontWeight: '900', color: '#c9c9c9' }}
+              style={{ flex: 1, height: '40px', borderRadius: '10px', fontSize: '9px', fontWeight: '900', color: '#c9c9c9', zIndex: 80 }}
             >
               BARRIO: {selectedBarrio || 'TODOS'}
             </button>
@@ -798,7 +874,8 @@ const PublicView = () => {
                     const uLng = pos.coords.longitude;
                     let closest = null;
                     let minDist = Infinity;
-                    ads.forEach(ad => {
+                    const safeAds = Array.isArray(ads) ? ads : [];
+                    safeAds.forEach(ad => {
                       if (ad.lat && ad.lng) {
                         const d = Math.sqrt(Math.pow(ad.lat - uLat, 2) + Math.pow(ad.lng - uLng, 2));
                         if (d < minDist) { minDist = d; closest = ad; }
