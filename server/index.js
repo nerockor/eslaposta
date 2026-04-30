@@ -23,34 +23,32 @@ const app = express();
 const port = process.env.PORT || 3001;
 console.log('>>> [DEBUG] PUERTO:', port);
 
+console.log('>>> [DEBUG] CONFIGURANDO MIDDLEWARES...');
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
+console.log('>>> [DEBUG] MIDDLEWARES LISTOS');
 
 // --- SECURITY CONFIGURATION ---
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'elkilombo-admin-secure-key-2026';
 
-// 1. Rate Limiting: Prevent DDoS and Scrapers
+// 1. Rate Limiting
 const limiter = rateLimit({
-	windowMs: 15 * 60 * 1000, // 15 minutes
-	max: 100, // limit each IP to 100 requests per windowMs
+	windowMs: 15 * 60 * 1000,
+	max: 100,
 	message: { error: 'Demasiadas peticiones. Por favor intenta más tarde.' }
 });
 app.use('/api/', limiter);
 
-// 2. Auth Middleware: Protect Admin endpoints
+// 2. Auth Middleware
 const auth = (req, res, next) => {
     const token = req.headers['x-admin-token'] || req.query.token;
-    
     if (token === ADMIN_TOKEN) {
         req.user = { role: 'admin', username: 'admin' };
         return next();
     }
-    
     db.get("SELECT * FROM users WHERE token = ?", [token], (err, user) => {
-        if (err || !user) {
-            return res.status(401).json({ error: 'No autorizado. Acceso denegado.' });
-        }
+        if (err || !user) return res.status(401).json({ error: 'No autorizado' });
         req.user = user;
         next();
     });
@@ -58,15 +56,18 @@ const auth = (req, res, next) => {
 
 // 3. Helper for Sanitization
 const clean = (val) => (typeof val === 'string' ? xss(val) : val);
-// ------------------------------
 
 // Database setup
+console.log('>>> [DEBUG] ABRIENDO BASE DE DATOS...');
 const dbPath = path.resolve(__dirname, 'database.db');
+console.log('>>> [DEBUG] RUTA DB:', dbPath);
 const db = new sqlite3.Database(dbPath, (err) => {
     if (err) {
-        console.error('Error opening database', err.message);
+        console.error('>>> [ERROR DB] ERROR AL ABRIR:', err.message);
     } else {
-        console.log('Connected to SQLite database');
+        console.log('>>> [DEBUG] CONECTADO A SQLITE');
+    }
+});
         db.run(`CREATE TABLE IF NOT EXISTS ads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             url TEXT NOT NULL,
