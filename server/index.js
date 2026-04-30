@@ -390,7 +390,7 @@ app.get('/api/ads/export/csv', auth, (req, res) => {
 });
 
 // Catch-all route to serve the frontend (must be last)
-app.get('*', (req, res) => {
+app.get('/(.*)', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/dist', 'index.html'));
 });
 
