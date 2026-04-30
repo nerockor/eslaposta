@@ -1,3 +1,6 @@
+console.log('>>> [DEBUG] EL ARCHIVO INDEX.JS SE ESTA EJECUTANDO');
+console.log('>>> [DEBUG] FECHA:', new Date().toISOString());
+
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
@@ -8,10 +11,7 @@ const xss = require('xss');
 
 const app = express();
 const port = process.env.PORT || 3001;
-
-console.log('>>> INICIANDO SERVIDOR ELKILOMBO...');
-console.log('>>> PUERTO DETECTADO:', port);
-console.log('>>> DIRECTORIO ACTUAL:', __dirname);
+console.log('>>> [DEBUG] PUERTO:', port);
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
