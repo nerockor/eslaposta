@@ -512,8 +512,6 @@ const PublicView = () => {
                     ? categories.map(cat => ({ id: cat.id, name: cat.name }))
                     : RUBROS.map((r, i) => ({ id: i, name: r }));
                   
-                  console.log('>>> RENDERIZANDO MENU RUBROS. Elementos:', arr.length, 'filterOpen:', filterOpen);
-                  
                   return arr.map(item => {
                     const isActive = selectedCategory === item.name;
                     return (
@@ -827,38 +825,16 @@ const PublicView = () => {
           {/* Botonera de Acciones (Filtros y Mapa) */}
           <div style={{ display: 'flex', gap: '8px', padding: '10px 15px 5px 15px', borderTop: '1px solid rgba(255,255,255,0.05)', backgroundColor: '#020617' }}>
             <button 
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setBarrioFilterOpen(false);
-                setFilterOpen(true);
-              }}
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setBarrioFilterOpen(false);
-                setFilterOpen(true);
-              }}
+              onClick={() => { setFilterOpen(true); setBarrioFilterOpen(false); }}
               className={`cyber-btn ${selectedCategory ? 'active' : ''}`}
-              style={{ flex: 1, height: '40px', borderRadius: '10px', fontSize: '9px', fontWeight: '900', color: '#c9c9c9', zIndex: 80 }}
+              style={{ flex: 1, height: '40px', borderRadius: '10px', fontSize: '9px', fontWeight: '900', color: '#c9c9c9' }}
             >
               RUBRO: {selectedCategory || 'TODOS'}
             </button>
             <button 
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setFilterOpen(false);
-                setBarrioFilterOpen(true);
-              }}
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setFilterOpen(false);
-                setBarrioFilterOpen(true);
-              }}
+              onClick={() => { setBarrioFilterOpen(true); setFilterOpen(false); }}
               className={`cyber-btn ${selectedBarrio ? 'active' : ''}`}
-              style={{ flex: 1, height: '40px', borderRadius: '10px', fontSize: '9px', fontWeight: '900', color: '#c9c9c9', zIndex: 80 }}
+              style={{ flex: 1, height: '40px', borderRadius: '10px', fontSize: '9px', fontWeight: '900', color: '#c9c9c9' }}
             >
               BARRIO: {selectedBarrio || 'TODOS'}
             </button>
