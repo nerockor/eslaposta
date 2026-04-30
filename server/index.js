@@ -66,8 +66,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
         console.error('>>> [ERROR DB] ERROR AL ABRIR:', err.message);
     } else {
         console.log('>>> [DEBUG] CONECTADO A SQLITE');
-    }
-});
+        
         db.run(`CREATE TABLE IF NOT EXISTS ads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             url TEXT NOT NULL,
@@ -89,7 +88,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
             expiration_date TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
-        // Ensure new columns exist for old databases
+
         const columns = ['image', 'name', 'phone', 'email', 'expiration_date', 'location', 'category', 'barrio', 'lat', 'lng', 'description'];
         columns.forEach(col => {
             db.run(`ALTER TABLE ads ADD COLUMN ${col} TEXT`, (err) => {
@@ -97,7 +96,6 @@ const db = new sqlite3.Database(dbPath, (err) => {
             });
         });
 
-        // Users Table for RBAC
         db.run(`CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
@@ -106,7 +104,6 @@ const db = new sqlite3.Database(dbPath, (err) => {
             token TEXT
         )`, (err) => {
             if (!err) {
-                // Ensure default admin exists
                 db.get("SELECT * FROM users WHERE role = 'admin'", [], (err, row) => {
                     if (!row) {
                         db.run("INSERT INTO users (username, password, role) VALUES (?, ?, 'admin')", ['admin', ADMIN_TOKEN]);
