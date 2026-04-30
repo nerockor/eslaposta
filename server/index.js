@@ -32,6 +32,9 @@ console.log('>>> [DEBUG] MIDDLEWARES LISTOS');
 // --- SECURITY CONFIGURATION ---
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'elkilombo-admin-secure-key-2026';
 
+// Trust Hostinger's reverse proxy (fixes express-rate-limit X-Forwarded-For error)
+app.set('trust proxy', 1);
+
 // 1. Rate Limiting
 const limiter = rateLimit({
 	windowMs: 15 * 60 * 1000,
