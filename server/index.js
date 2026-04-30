@@ -9,6 +9,10 @@ const xss = require('xss');
 const app = express();
 const port = process.env.PORT || 3001;
 
+console.log('>>> INICIANDO SERVIDOR ELKILOMBO...');
+console.log('>>> PUERTO DETECTADO:', port);
+console.log('>>> DIRECTORIO ACTUAL:', __dirname);
+
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
