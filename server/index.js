@@ -3,8 +3,15 @@ console.log('>>> [DEBUG] FECHA:', new Date().toISOString());
 
 const express = require('express');
 console.log('>>> [DEBUG] EXPRESS CARGADO');
-const sqlite3 = require('sqlite3').verbose();
-console.log('>>> [DEBUG] SQLITE3 CARGADO');
+let sqlite3;
+try {
+    sqlite3 = require('sqlite3').verbose();
+    console.log('>>> [DEBUG] SQLITE3 CARGADO EXITOSAMENTE');
+} catch (e) {
+    console.error('>>> [ERROR FATAL] FALLO AL CARGAR SQLITE3:', e.message);
+    console.error('>>> [ERROR DETALLE]:', e.stack);
+    process.exit(1);
+}
 const cors = require('cors');
 console.log('>>> [DEBUG] CORS CARGADO');
 const bodyParser = require('body-parser');
