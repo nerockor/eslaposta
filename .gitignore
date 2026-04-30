@@ -1,9 +1,5 @@
 node_modules/
 .DS_Store
-**/*.db
-dist/
-build/
-respaldo-*/
-*.zip
-*.rar
+server/database.db
+client/node_modules/
 .env
