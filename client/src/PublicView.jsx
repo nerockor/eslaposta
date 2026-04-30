@@ -434,40 +434,42 @@ const PublicView = () => {
               <ChevronDown size={14} className={`transition-transform duration-300 ${filterOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {filterOpen && (
-              <div
-                className="absolute top-14 left-0 w-80 max-h-[60vh] overflow-y-auto no-scrollbar rounded-2xl border border-white/10 bg-slate-950/95 backdrop-blur-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] p-4"
-                onClick={(e) => e.stopPropagation()}
+            <div
+              className={`absolute top-14 left-0 w-80 max-h-[60vh] overflow-y-auto no-scrollbar rounded-2xl border border-white/10 bg-slate-950/95 backdrop-blur-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] p-4 transition-all duration-300 origin-top-left ${
+                filterOpen 
+                  ? 'opacity-100 scale-100 pointer-events-auto translate-y-0' 
+                  : 'opacity-0 scale-75 pointer-events-none -translate-y-2'
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => { setSelectedCategory(null); setFilterOpen(false); }}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl mb-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+                  !selectedCategory
+                    ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30'
+                    : 'bg-slate-900/60 text-slate-500 border border-transparent hover:bg-slate-800/80 hover:text-slate-300'
+                }`}
               >
-                <button
-                  onClick={() => { setSelectedCategory(null); setFilterOpen(false); }}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl mb-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-                    !selectedCategory
-                      ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30'
-                      : 'bg-slate-900/60 text-slate-500 border border-transparent hover:bg-slate-800/80 hover:text-slate-300'
-                  }`}
-                >
-                  <span>Mostrar Todos los Rubros</span>
-                  {selectedCategory && <X size={12} />}
-                </button>
-                <div className="grid grid-cols-2 gap-2">
-                  {RUBROS.map(r => {
-                    const isActive = selectedCategory === r;
-                    return (
-                      <button
-                        key={r}
-                        onClick={() => { setSelectedCategory(isActive ? null : r); setFilterOpen(false); }}
-                        className={`px-3 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-wide transition-all text-left ${
-                          isActive ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-900/50 text-slate-400 hover:bg-slate-800/70'
-                        }`}
-                      >
-                        {r}
-                      </button>
-                    );
-                  })}
-                </div>
+                <span>Mostrar Todos los Rubros</span>
+                {selectedCategory && <X size={12} />}
+              </button>
+              <div className="grid grid-cols-2 gap-2">
+                {RUBROS.map(r => {
+                  const isActive = selectedCategory === r;
+                  return (
+                    <button
+                      key={r}
+                      onClick={() => { setSelectedCategory(isActive ? null : r); setFilterOpen(false); }}
+                      className={`px-3 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-wide transition-all text-left ${
+                        isActive ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-900/50 text-slate-400 hover:bg-slate-800/70'
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  );
+                })}
               </div>
-            )}
+            </div>
           </div>
 
           {/* Barrio Filter */}
@@ -487,40 +489,42 @@ const PublicView = () => {
               <ChevronDown size={14} className={`transition-transform duration-300 ${barrioFilterOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {barrioFilterOpen && (
-              <div
-                className="absolute top-14 left-0 w-80 max-h-[60vh] overflow-y-auto no-scrollbar rounded-2xl border border-white/10 bg-slate-950/95 backdrop-blur-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] p-4"
-                onClick={(e) => e.stopPropagation()}
+            <div
+              className={`absolute top-14 left-0 w-80 max-h-[60vh] overflow-y-auto no-scrollbar rounded-2xl border border-white/10 bg-slate-950/95 backdrop-blur-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] p-4 transition-all duration-300 origin-top-left ${
+                barrioFilterOpen 
+                  ? 'opacity-100 scale-100 pointer-events-auto translate-y-0' 
+                  : 'opacity-0 scale-75 pointer-events-none -translate-y-2'
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => { setSelectedBarrio(null); setBarrioFilterOpen(false); }}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl mb-3 text-[10px] font-black uppercase tracking-widest transition-all ${
+                  !selectedBarrio
+                    ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-slate-900/60 text-slate-500 border border-transparent hover:bg-slate-800/80 hover:text-slate-300'
+                }`}
               >
-                <button
-                  onClick={() => { setSelectedBarrio(null); setBarrioFilterOpen(false); }}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl mb-3 text-[10px] font-black uppercase tracking-widest transition-all ${
-                    !selectedBarrio
-                      ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                      : 'bg-slate-900/60 text-slate-500 border border-transparent hover:bg-slate-800/80 hover:text-slate-300'
-                  }`}
-                >
-                  <span>Cualquier Barrio</span>
-                  {selectedBarrio && <X size={12} />}
-                </button>
-                <div className="grid grid-cols-2 gap-2">
-                  {BARRIOS.map(b => {
-                    const isActive = selectedBarrio === b;
-                    return (
-                      <button
-                        key={b}
-                        onClick={() => { setSelectedBarrio(isActive ? null : b); setBarrioFilterOpen(false); }}
-                        className={`px-3 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-wide transition-all text-left ${
-                          isActive ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-900/50 text-slate-400 hover:bg-slate-800/70'
-                        }`}
-                      >
-                        {b}
-                      </button>
-                    );
-                  })}
-                </div>
+                <span>Mostrar Todos los Barrios</span>
+                {selectedBarrio && <X size={12} />}
+              </button>
+              <div className="grid grid-cols-2 gap-2">
+                {BARRIOS.map(b => {
+                  const isActive = selectedBarrio === b;
+                  return (
+                    <button
+                      key={b}
+                      onClick={() => { setSelectedBarrio(isActive ? null : b); setBarrioFilterOpen(false); }}
+                      className={`px-3 py-2.5 rounded-xl text-[9px] font-bold uppercase tracking-wide transition-all text-left ${
+                        isActive ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-900/50 text-slate-400 hover:bg-slate-800/70'
+                      }`}
+                    >
+                      {b}
+                    </button>
+                  );
+                })}
               </div>
-            )}
+            </div>
           </div>
         </div>
       )}
