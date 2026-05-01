@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
-import { ZoomIn, ZoomOut, Maximize, MapPin, Tag, Image as ImageIcon, ExternalLink, Phone, Mail, Filter, X, ChevronDown } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, MapPin, Tag, Image as ImageIcon, ExternalLink, Phone, Mail, Filter, X, ChevronDown, Zap } from 'lucide-react';
 import MobileSphereView from './MobileSphereView';
 
 const CANVAS_SIZE = 1000;
@@ -150,6 +150,69 @@ const PublicView = () => {
         color: #fff;
         border-color: transparent;
         box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+      }
+      .main-header {
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        width: 280px;
+        height: 55px;
+        display: grid;
+        grid-template-columns: 55px 1fr 55px;
+        align-items: center;
+        border-radius: 12px;
+        overflow: hidden;
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid rgba(201, 201, 201, 0.2);
+        box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+      }
+      .main-header::before {
+        content: '';
+        position: absolute;
+        top: -150%;
+        left: -50%;
+        width: 200%;
+        height: 400%;
+        background: conic-gradient(
+          from 0deg,
+          transparent 0deg,
+          #ff00ff 90deg,
+          #00ffff 180deg,
+          #00ff00 270deg,
+          transparent 360deg
+        );
+        animation: rotateCyber 3s linear infinite;
+        z-index: -2;
+      }
+      .main-header::after {
+        content: '';
+        position: absolute;
+        inset: 2px;
+        background: #0f172a;
+        border-radius: 10px;
+        z-index: -1;
+      }
+      .header-logo {
+        width: 24px;
+        height: 24px;
+        object-fit: contain;
+        justify-self: center;
+        z-index: 2;
+        filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.3));
+      }
+      .header-title {
+        font-family: 'Josefin Sans', sans-serif;
+        font-weight: 700;
+        font-size: 26px;
+        color: #f1f5f9;
+        letter-spacing: 0.05em;
+        line-height: 1;
+        margin: 0;
+        text-align: center;
+        white-space: nowrap;
+        z-index: 2;
       }
     `;
     document.head.appendChild(style);
@@ -417,6 +480,13 @@ const PublicView = () => {
       onClick={!isMobile ? handleClick : undefined}
       style={{ cursor: isMobile ? 'default' : (isDragging ? 'grabbing' : (hoveredAd ? 'pointer' : 'grab')) }}
     >
+      {/* Header Superior con 3 columnas para centrado perfecto */}
+      <div className="main-header">
+        <img src="/favicon.svg" alt="logo" className="header-logo" />
+        <h1 className="header-title">eslaposta</h1>
+        <div style={{ width: 55 }} /> {/* Espaciador para balancear */}
+      </div>
+
       {isMobile ? (
         <MobileSphereView 
           ads={(Array.isArray(ads) ? ads : []).filter(a => {
