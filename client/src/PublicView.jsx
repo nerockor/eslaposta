@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
-import { ZoomIn, ZoomOut, Maximize, MapPin, Tag, Image as ImageIcon, ExternalLink, Phone, Mail, Filter, X, ChevronDown, Zap } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, MapPin, Tag, Image as ImageIcon, ExternalLink, Phone, Mail, Filter, X, ChevronDown, Zap, Menu } from 'lucide-react';
 import MobileSphereView from './MobileSphereView';
 
 const CANVAS_SIZE = 1000;
@@ -47,6 +47,16 @@ const PublicView = () => {
   const [categories, setCategories] = useState([]);
   const [spinTrigger, setSpinTrigger] = useState(0);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [visitorData, setVisitorData] = useState(null);
+  const [authModalMode, setAuthModalMode] = useState(null); // 'login' | 'register' | null
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  
+  // Auth Form State
+  const [authForm, setAuthForm] = useState({ name: '', phone: '', email: '', password: '' });
+  const [authError, setAuthError] = useState('');
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -74,12 +84,22 @@ const PublicView = () => {
     fetchCategories();
     handleResize();
     window.addEventListener('resize', handleResize);
+
+    const savedVisitor = localStorage.getItem('visitorData');
+    if (savedVisitor) {
+      try {
+        setVisitorData(JSON.parse(savedVisitor));
+        setIsLoggedIn(true);
+      } catch(e) {}
+    }
+
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
+      @import url('https://fonts.googleapis.com/css2?family=Pacifico&display=swap');
       @keyframes marqueeRight {
         0% { transform: translateX(-100%); }
         100% { transform: translateX(100%); }
@@ -213,6 +233,109 @@ const PublicView = () => {
         text-align: center;
         white-space: nowrap;
         z-index: 2;
+      }
+      .is-posta-font {
+        font-family: 'Pacifico', cursive;
+        font-size: 1.4em;
+        display: inline-block;
+        margin-top: 5px;
+      }
+      .menu-btn {
+        width: 55px;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        color: #f1f5f9;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        z-index: 10;
+        position: relative;
+        gap: 6px;
+      }
+      .menu-btn:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .menu-btn-container {
+        display: flex;
+        align-items: center;
+        padding-left: 5px;
+        z-index: 10;
+      }
+      .isotype-icon {
+        width: 20px;
+        height: 20px;
+        filter: drop-shadow(0 0 5px rgba(139, 92, 246, 0.5));
+      }
+      .user-drawer {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 280px;
+        height: 100%;
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(20px);
+        z-index: 2000;
+        transform: translateX(-100%);
+        transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 60px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .user-drawer.open {
+        transform: translateX(0);
+      }
+      .drawer-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1999;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.4s ease;
+      }
+      .drawer-overlay.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .drawer-item {
+        padding: 15px 20px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        color: #f1f5f9;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .drawer-item:hover {
+        background: rgba(139, 92, 246, 0.2);
+        border-color: rgba(139, 92, 246, 0.4);
+      }
+      .modal-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px);
+        z-index: 3000; display: flex; align-items: center; justify-content: center;
+        padding: 20px;
+      }
+      .modal-content {
+        background: #0f172a; border: 1px solid #334155; border-radius: 16px;
+        width: 100%; max-width: 400px; padding: 24px; color: white;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+      }
+      .modal-input {
+        width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px;
+        background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+        color: white; font-size: 14px;
       }
     `;
     document.head.appendChild(style);
@@ -392,6 +515,57 @@ const PublicView = () => {
 
   }, [ads, transform, hoveredAd, imageObjects, selectedCategory, selectedBarrio]);
 
+  const handleWhatsAppClick = async (e) => {
+    if (e) e.preventDefault();
+    if (!hoveredAd || !hoveredAd.phone) return;
+    
+    if (!isLoggedIn) {
+      setAuthModalMode('login');
+      return;
+    }
+
+    try {
+      await axios.post(`/api/visitors/${visitorData.id}/click`, { ad_id: hoveredAd.id, ad_name: hoveredAd.name });
+    } catch (err) {
+      console.error('Error logging click', err);
+    }
+
+    const cleanPhone = hoveredAd.phone.replace(/\D/g, '');
+    const msg = encodeURIComponent("Hola, te vi en el Elkilombo de Buenos Aires y quería consultar por...");
+    window.open(`https://wa.me/${cleanPhone}?text=${msg}`, '_blank');
+  };
+
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+
+    if (authModalMode === 'register' && !acceptedTerms) {
+      setAuthError('Debes aceptar los Términos y Condiciones');
+      return;
+    }
+
+    try {
+      const endpoint = authModalMode === 'login' ? '/api/visitors/login' : '/api/visitors/register';
+      const res = await axios.post(endpoint, authForm);
+      
+      if (authModalMode === 'register') {
+        // Auto-login after register
+        const loginRes = await axios.post('/api/visitors/login', { email: authForm.email, password: authForm.password });
+        setVisitorData(loginRes.data.visitor);
+        localStorage.setItem('visitorData', JSON.stringify(loginRes.data.visitor));
+        setIsLoggedIn(true);
+        setAuthModalMode(null);
+      } else {
+        setVisitorData(res.data.visitor);
+        localStorage.setItem('visitorData', JSON.stringify(res.data.visitor));
+        setIsLoggedIn(true);
+        setAuthModalMode(null);
+      }
+    } catch (err) {
+      setAuthError(err.response?.data?.error || 'Error de conexión');
+    }
+  };
+
   const handleMouseDown = (e) => {
     setIsDragging(true);
     setLastMousePos({ x: e.clientX, y: e.clientY });
@@ -480,9 +654,137 @@ const PublicView = () => {
       onClick={!isMobile ? handleClick : undefined}
       style={{ cursor: isMobile ? 'default' : (isDragging ? 'grabbing' : (hoveredAd ? 'pointer' : 'grab')) }}
     >
-      {/* Header Superior con 3 columnas para centrado perfecto */}
+      {/* Menú Lateral (Drawer) */}
+      <div className={`drawer-overlay ${menuOpen ? 'open' : ''}`} onClick={() => setMenuOpen(false)} />
+      <div className={`user-drawer ${menuOpen ? 'open' : ''}`}>
+        <div className="flex flex-col items-center text-center gap-3 mb-8 px-2">
+          <img src="/favicon.svg" alt="logo" className="w-16 h-16 mb-2" />
+          <div>
+            <h2 className="text-3xl font-black text-white uppercase tracking-tighter leading-tight">
+              {isLoggedIn && visitorData?.name ? visitorData.name : (isLoggedIn ? 'Usuario' : 'Bienvenido')}
+            </h2>
+            {isLoggedIn && (
+              <p className="text-slate-400 text-xs mt-3 leading-relaxed font-medium">
+                Ya sos parte. Explorá los locales que hacen que Buenos Aires sea única. Todo lo que aparece acá <br/>
+                <span className="text-indigo-400 is-posta-font">¡Es la Posta!</span>
+              </p>
+            )}
+          </div>
+        </div>
+        
+        {isLoggedIn ? (
+          <>
+            <button className="drawer-item" onClick={() => setMenuOpen(false)}>
+              <Zap size={18} className="text-indigo-400" />
+              <span>Mi Cuenta</span>
+            </button>
+            <button className="drawer-item" onClick={() => setMenuOpen(false)}>
+              <Tag size={18} className="text-emerald-400" />
+              <span>Mis Anuncios</span>
+            </button>
+            <button className="drawer-item" onClick={() => setMenuOpen(false)}>
+              <Mail size={18} className="text-indigo-400" />
+              <span>Mensajes</span>
+            </button>
+            
+            <div className="mt-auto pt-8 border-t border-white/5">
+              <button className="drawer-item w-full bg-red-500/10 border-red-500/20 text-red-400" onClick={() => {
+                setIsLoggedIn(false);
+                setVisitorData(null);
+                localStorage.removeItem('visitorData');
+                setMenuOpen(false);
+              }}>
+                <X size={18} />
+                <span>Cerrar Sesión</span>
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <button className="drawer-item bg-indigo-600/20 border-indigo-500/30 text-indigo-300" onClick={() => { setAuthModalMode('login'); setMenuOpen(false); }}>
+              <span>Logearse</span>
+            </button>
+            <button className="drawer-item bg-emerald-600/20 border-emerald-500/30 text-emerald-300" onClick={() => { setAuthModalMode('register'); setMenuOpen(false); }}>
+              <span>Registrarse</span>
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Auth Modal */}
+      {authModalMode && (
+        <div className="modal-overlay">
+          <div className="modal-content relative pointer-events-auto">
+            <button onClick={() => setAuthModalMode(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white"><X size={20}/></button>
+            <h2 className="text-xl font-black text-center mb-6 uppercase tracking-widest">{authModalMode === 'login' ? 'Iniciar Sesión' : 'Registrarse'}</h2>
+            
+            {authError && <div className="bg-red-500/20 border border-red-500/50 text-red-200 text-xs p-3 rounded mb-4 text-center">{authError}</div>}
+            
+            <form onSubmit={handleAuthSubmit} className="flex flex-col gap-3">
+              {authModalMode === 'register' && (
+                <>
+                  <input className="modal-input" placeholder="Nombre completo" value={authForm.name} onChange={e=>setAuthForm({...authForm, name: e.target.value})} required />
+                  <input className="modal-input" placeholder="Teléfono" type="tel" value={authForm.phone} onChange={e=>setAuthForm({...authForm, phone: e.target.value})} required />
+                </>
+              )}
+              <input className="modal-input" placeholder="Correo electrónico" type="email" value={authForm.email} onChange={e=>setAuthForm({...authForm, email: e.target.value})} required />
+              <input className="modal-input" placeholder="Contraseña" type="password" value={authForm.password} onChange={e=>setAuthForm({...authForm, password: e.target.value})} required />
+              
+              {authModalMode === 'register' && (
+                <div className="flex items-center gap-2 mt-2 mb-4">
+                  <input type="checkbox" id="terms" checked={acceptedTerms} onChange={e=>setAcceptedTerms(e.target.checked)} className="accent-indigo-500" />
+                  <label htmlFor="terms" className="text-xs text-slate-400">
+                    Acepto los <span className="text-indigo-400 cursor-pointer underline" onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}>Términos y Condiciones</span>
+                  </label>
+                </div>
+              )}
+              
+              <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-white font-black uppercase tracking-wider transition-colors mt-2">
+                {authModalMode === 'login' ? 'Ingresar' : 'Registrarme'}
+              </button>
+            </form>
+            
+            <div className="mt-4 text-center text-xs text-slate-400">
+              {authModalMode === 'login' ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
+              <span className="text-indigo-400 cursor-pointer underline" onClick={() => { setAuthModalMode(authModalMode === 'login' ? 'register' : 'login'); setAuthError(''); }}>
+                {authModalMode === 'login' ? 'Regístrate aquí' : 'Inicia Sesión'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Terms Modal */}
+      {showTermsModal && (
+        <div className="modal-overlay" style={{ zIndex: 4000 }}>
+          <div className="modal-content max-w-lg max-h-[80vh] flex flex-col relative">
+            <h2 className="text-lg font-black text-center mb-4 text-indigo-400">Términos y Condiciones de Uso y Política de Tratamiento de Datos</h2>
+            <div className="flex-1 overflow-y-auto no-scrollbar text-xs text-slate-300 space-y-4 pr-2">
+              <p><strong>1. Aceptación de las Condiciones de Servicio</strong><br/>El acceso y utilización de este sitio web (en adelante, "la Plataforma") atribuye la condición de Usuario, quien, mediante la navegación y/o interacción en el mismo, manifiesta su aceptación plena y sin reservas de las presentes cláusulas. El desconocimiento del contenido de estas condiciones no exime al Usuario de las responsabilidades derivadas de su aceptación técnica.</p>
+              <p><strong>2. Consentimiento Informado y Finalidad del Tratamiento</strong><br/>De conformidad con el Art. 5 de la Ley 25.326, el Usuario presta su consentimiento expreso para que los datos recabados de forma directa o indirecta (mediante cookies, metadatos, registros de actividad o formularios) sean incorporados a una base de datos de titularidad privada.</p>
+              <p>El tratamiento de dichos datos tendrá como finalidad principal y secundaria:<br/>- La optimización de algoritmos de segmentación conductual.<br/>- La explotación comercial y publicitaria de la información mediante perfiles de consumo.<br/>- La provisión de servicios de marketing directo y telemarketing por parte de la Plataforma o de terceros asociados.<br/>- La transferencia de activos digitales de información a socios comerciales de diversas industrias.</p>
+              <p><strong>3. Cesión y Transferencia Internacional de Datos</strong><br/>El Usuario queda debidamente notificado de que sus datos personales podrán ser objeto de cesión a terceras empresas vinculadas al sector del marketing, la publicidad y el análisis de datos masivos (Big Data).<br/>Asimismo, se autoriza la transferencia internacional de datos a servidores ubicados en jurisdicciones que podrían no contar con niveles de protección equivalentes a los de la República Argentina, bajo las previsiones del Art. 12 de la Ley 25.326, con el único fin de garantizar la redundancia técnica y la eficiencia publicitaria.</p>
+              <p><strong>4. Carácter No Obligatorio y Derechos ARCO</strong><br/>Si bien la entrega de datos no es obligatoria para la navegación básica, la negativa a suministrarlos o la revocación del consentimiento para su uso publicitario impedirá el acceso a las funciones personalizadas y beneficios de la Plataforma.<br/>El Usuario podrá ejercer sus derechos de Acceso, Rectificación, Actualización y Supresión (Derechos ARCO) mediante el envío de un correo electrónico a la dirección de contacto legal de la Plataforma, acreditando fehacientemente su identidad. No obstante, los datos utilizados de forma anonimizada para estadísticas publicitarias no estarán sujetos a supresión inmediata si han sido disociados del titular de forma irreversible.</p>
+              <p><strong>5. Jurisdicción y Ley Aplicable</strong><br/>Para cualquier controversia derivada del presente documento, las partes se someten a la jurisdicción de los Tribunales Ordinarios de la Ciudad Autónoma de Buenos Aires, renunciando a cualquier otro fuero o jurisdicción. La Agencia de Acceso a la Información Pública, en su carácter de Órgano de Control de la Ley 25.326, tiene la atribución de atender las denuncias y reclamos que se interpongan con relación al incumplimiento de las normas sobre protección de datos personales.</p>
+            </div>
+            <button 
+              onClick={() => { setAcceptedTerms(true); setShowTermsModal(false); }} 
+              className="w-full mt-4 py-4 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white font-black uppercase tracking-widest transition-colors shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+            >
+              Aceptar Términos
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Header Superior con Menú Hamburguesa e Isotipo */}
       <div className="main-header">
-        <img src="/favicon.svg" alt="logo" className="header-logo" />
+        <div className="menu-btn-container">
+          <button className="menu-btn" onClick={() => setMenuOpen(true)}>
+            <Menu size={22} />
+            <img src="/favicon.svg" alt="isotype" className="isotype-icon" />
+          </button>
+        </div>
         <h1 className="header-title">eslaposta</h1>
         <div style={{ width: 55 }} /> {/* Espaciador para balancear */}
       </div>
@@ -1031,19 +1333,8 @@ const PublicView = () => {
           {/* Botón de WhatsApp One-Click */}
           <div style={{ padding: '5px 15px 15px 15px', backgroundColor: '#020617' }}>
             <button 
-              onClick={() => {
-                if (!hoveredAd || !hoveredAd.phone) return;
-                const cleanPhone = hoveredAd.phone.replace(/\D/g, '');
-                const msg = encodeURIComponent("Hola, te vi en el Elkilombo de Buenos Aires y quería consultar por...");
-                window.open(`https://wa.me/${cleanPhone}?text=${msg}`, '_blank');
-              }}
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                if (!hoveredAd || !hoveredAd.phone) return;
-                const cleanPhone = hoveredAd.phone.replace(/\D/g, '');
-                const msg = encodeURIComponent("Hola, te vi en el Elkilombo de Buenos Aires y quería consultar por...");
-                window.open(`https://wa.me/${cleanPhone}?text=${msg}`, '_blank');
-              }}
+              onClick={handleWhatsAppClick}
+              onTouchEnd={handleWhatsAppClick}
               disabled={!hoveredAd}
               className={`cyber-btn ${hoveredAd ? 'active' : ''}`}
               style={{ 

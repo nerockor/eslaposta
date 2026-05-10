@@ -114,6 +114,16 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 });
             }
         });
+
+        db.run(`CREATE TABLE IF NOT EXISTS visitors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            phone TEXT,
+            email TEXT UNIQUE,
+            password TEXT,
+            whatsapp_clicks TEXT DEFAULT '[]',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
     }
 });
 
@@ -317,6 +327,64 @@ app.post('/api/ads', auth, (req, res) => {
             res.json({ id: this.lastID, x: nextX, y: nextY, width: requestedSize, height: requestedSize });
         });
         stmt.finalize();
+    });
+});
+
+// API: Visitor Register
+app.post('/api/visitors/register', (req, res) => {
+    let { name, phone, email, password } = req.body;
+    if (!name || !phone || !email || !password) {
+        return res.status(400).json({ error: 'Todos los campos son requeridos' });
+    }
+    name = clean(name);
+    phone = clean(phone);
+    email = clean(email);
+    password = clean(password);
+
+    db.run("INSERT INTO visitors (name, phone, email, password) VALUES (?, ?, ?, ?)", [name, phone, email, password], function(err) {
+        if (err) {
+            if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'El email ya está registrado' });
+            return res.status(500).json({ error: 'Error interno del servidor' });
+        }
+        res.json({ id: this.lastID, success: true });
+    });
+});
+
+// API: Visitor Login
+app.post('/api/visitors/login', (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email y contraseña requeridos' });
+
+    db.get("SELECT id, name, email FROM visitors WHERE email = ? AND password = ?", [clean(email), clean(password)], (err, visitor) => {
+        if (err || !visitor) return res.status(401).json({ error: 'Credenciales inválidas' });
+        
+        // Use a simple token or just return user data
+        const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
+        res.json({ token, visitor });
+    });
+});
+
+// API: Register WhatsApp Click
+app.post('/api/visitors/:id/click', (req, res) => {
+    const { id } = req.params;
+    const { ad_id, ad_name } = req.body;
+
+    db.get("SELECT whatsapp_clicks FROM visitors WHERE id = ?", [id], (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Visitante no encontrado' });
+
+        let clicks = [];
+        try {
+            clicks = JSON.parse(row.whatsapp_clicks || '[]');
+        } catch (e) {
+            clicks = [];
+        }
+
+        clicks.push({ ad_id, ad_name, timestamp: new Date().toISOString() });
+
+        db.run("UPDATE visitors SET whatsapp_clicks = ? WHERE id = ?", [JSON.stringify(clicks), id], function(updateErr) {
+            if (updateErr) return res.status(500).json({ error: 'Error al guardar el click' });
+            res.json({ success: true });
+        });
     });
 });
 
