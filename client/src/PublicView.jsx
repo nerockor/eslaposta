@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { ZoomIn, ZoomOut, Maximize, MapPin, Tag, Image as ImageIcon, ExternalLink, Phone, Mail, Filter, X, ChevronDown, Zap, Menu } from 'lucide-react';
 import MobileSphereView from './MobileSphereView';
+import DesktopSphereSplitView from './DesktopSphereSplitView';
 
 const CANVAS_SIZE = 1000;
 const API_URL = '/api/ads';
@@ -16,16 +17,98 @@ const RUBROS = [
   'Restaurante', 'Heladeria', 'Pintureria'
 ];
 
+const ZONAS_POR_CIUDAD = {
+  'Palermo': [
+    'Palermo Soho', 'Palermo Hollywood', 'Palermo Chico', 'Las Cañitas', 'Palermo Nuevo'
+  ],
+  'Belgrano': [
+    'Belgrano R', 'Belgrano C', 'Bajo Belgrano'
+  ],
+  'Recoleta': [
+    'Recoleta', 'Barrio Norte'
+  ],
+  'Caballito': [
+    'Caballito', 'Parque Centenario', 'Primera Junta'
+  ],
+  'San Telmo': [
+    'San Telmo', 'Montserrat'
+  ],
+  'Villa Urquiza': [
+    'Villa Urquiza', 'Villa Ortúzar', 'Parque Chas'
+  ],
+  'Flores': [
+    'Flores', 'Floresta'
+  ],
+  'Almagro': [
+    'Almagro', 'Boedo'
+  ],
+  'Balvanera': [
+    'Balvanera', 'Once', 'Congreso'
+  ],
+  'Retiro': [
+    'Retiro', 'Microcentro', 'San Nicolás'
+  ]
+};
+
 const BARRIOS = [
-  'Agronomía', 'Almagro', 'Balvanera', 'Barracas', 'Belgrano', 'Boedo', 'Caballito', 'Chacarita',
-  'Coghlan', 'Colegiales', 'Constitución', 'Flores', 'Floresta', 'La Boca', 'La Paternal',
-  'Liniers', 'Mataderos', 'Monte Castro', 'Monserrat', 'Nueva Pompeya', 'Núñez', 'Palermo',
-  'Parque Avellaneda', 'Parque Chacabuco', 'Parque Chas', 'Parque Patricios', 'Puerto Madero',
-  'Recoleta', 'Retiro', 'Saavedra', 'San Cristóbal', 'San Nicolás', 'San Telmo', 'Vélez Sársfield',
-  'Versalles', 'Villa Crespo', 'Villa del Parque', 'Villa Devoto', 'Villa General Mitre',
-  'Villa Lugano', 'Villa Luro', 'Villa Ortúzar', 'Villa Pueyrredón', 'Villa Real', 'Villa Riachuelo',
-  'Villa Santa Rita', 'Villa Soldati', 'Villa Urquiza'
+  'Palermo',
+  'Belgrano',
+  'Recoleta',
+  'Caballito',
+  'San Telmo',
+  'Villa Urquiza',
+  'Flores',
+  'Almagro',
+  'Balvanera',
+  'Retiro'
 ];
+
+const StarRating = ({ initialRating, count, onRate, readOnly = false }) => {
+  const [hover, setHover] = useState(0);
+  const [currentRating, setCurrentRating] = useState(initialRating);
+
+  useEffect(() => {
+    setCurrentRating(initialRating);
+  }, [initialRating]);
+
+  return (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <div className="flex flex-row items-center gap-0.5">
+        {[1, 2, 3, 4, 5].map((star) => {
+          const active = (hover || currentRating) >= star;
+          return (
+            <button
+              key={star}
+              disabled={readOnly}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setCurrentRating(star);
+                if (onRate) onRate(star);
+              }}
+              onMouseEnter={() => !readOnly && setHover(star)}
+              onMouseLeave={() => !readOnly && setHover(0)}
+              className={`relative flex items-center justify-center transition-transform duration-200 ${
+                readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-125'
+              }`}
+              style={{ width: '16px', height: '16px', padding: 0, border: 'none', background: 'transparent' }}
+            >
+              <Zap 
+                size={14} 
+                style={{
+                  fill: active ? '#00e5ff' : '#1e293b',
+                  color: active ? '#00e5ff' : '#1e293b',
+                  filter: active ? 'drop-shadow(0 0 4px rgba(0,229,255,0.8))' : 'none',
+                  transition: 'all 0.3s ease'
+                }}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 const PublicView = () => {
   const canvasRef = useRef(null);
@@ -42,6 +125,7 @@ const PublicView = () => {
   const [targetAd, setTargetAd] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedBarrio, setSelectedBarrio] = useState(null);
+  const [selectedZona, setSelectedZona] = useState(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [barrioFilterOpen, setBarrioFilterOpen] = useState(false);
   const [categories, setCategories] = useState([]);
@@ -57,12 +141,94 @@ const PublicView = () => {
   // Auth Form State
   const [authForm, setAuthForm] = useState({ name: '', phone: '', email: '', password: '' });
   const [authError, setAuthError] = useState('');
+  const [adRating, setAdRating] = useState({ avg: 0, count: 0 });
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [favoriteAdIds, setFavoriteAdIds] = useState(new Set());
+
+  const fetchFavorites = async () => {
+    if (!visitorData?.id) return;
+    try {
+      const res = await axios.get(`/api/visitors/${visitorData.id}/ratings`);
+      const ids = new Set(res.data.map(r => r.ad_id));
+      setFavoriteAdIds(ids);
+    } catch (err) {
+      console.error('Error fetching favorites:', err);
+    }
+  };
+
+  const displayAds = useMemo(() => {
+    const validAds = Array.isArray(ads) ? ads : [];
+    const filtered = validAds.filter(ad => {
+      let isFilteredOut = (selectedCategory && ad.category !== selectedCategory) || 
+                           (selectedBarrio && ad.barrio !== selectedBarrio) ||
+                           (selectedZona && ad.zona !== selectedZona);
+      
+      if (showFavoritesOnly && !favoriteAdIds.has(ad.id)) {
+        isFilteredOut = true;
+      }
+
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const matches = 
+          (ad.name?.toLowerCase().includes(query)) ||
+          (ad.category?.toLowerCase().includes(query)) ||
+          (ad.description?.toLowerCase().includes(query)) ||
+          (ad.barrio?.toLowerCase().includes(query)) ||
+          (ad.zona?.toLowerCase().includes(query));
+        
+        if (!matches) isFilteredOut = true;
+      }
+      
+      return !isFilteredOut;
+    });
+
+    return filtered;
+  }, [ads, selectedCategory, selectedBarrio, selectedZona, showFavoritesOnly, favoriteAdIds, searchQuery]);
+
+  // Auto-target if only one ad matches search
+  useEffect(() => {
+    if (searchQuery.trim() && displayAds.length === 1) {
+      setTargetAd(displayAds[0]);
+    }
+  }, [displayAds, searchQuery]);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useEffect(() => {
+    if (hoveredAd) {
+      const timer = setTimeout(() => {
+        axios.get(`/api/ads/${hoveredAd.id}/rating`)
+          .then(res => setAdRating(res.data))
+          .catch(() => setAdRating({ avg: 0, count: 0 }));
+      }, 400);
+      return () => clearTimeout(timer);
+    } else {
+      setAdRating({ avg: 0, count: 0 });
+    }
+  }, [hoveredAd]);
+
+  const handleRate = async (score) => {
+    if (!isLoggedIn || !visitorData) {
+      setAuthModalMode('login');
+      return;
+    }
+    try {
+      await axios.post(`/api/ads/${hoveredAd.id}/rate`, { 
+        visitor_id: visitorData.id, 
+        score 
+      });
+      // Refresh rating
+      const res = await axios.get(`/api/ads/${hoveredAd.id}/rating`);
+      setAdRating(res.data);
+    } catch (err) {
+      console.error('Error al calificar:', err);
+    }
+  };
 
   useEffect(() => {
     const safeAds = Array.isArray(ads) ? ads : [];
@@ -111,9 +277,13 @@ const PublicView = () => {
         white-space: nowrap;
         font-weight: 900;
         text-transform: uppercase;
-        color: #818cf8;
+        color: #94a3b8;
         font-size: 14px;
         letter-spacing: 1px;
+      }
+      @keyframes shimmerLine {
+        0% { background-position: 100% 0; }
+        100% { background-position: -100% 0; }
       }
       @keyframes rotateCyber {
         from { transform: rotate(0deg); }
@@ -130,7 +300,7 @@ const PublicView = () => {
       .cyber-btn {
         position: relative;
         overflow: hidden;
-        background: rgba(15, 23, 42, 0.8);
+        background: #101010;
         color: #c9c9c9;
         border: 1px solid rgba(201, 201, 201, 0.2);
         display: flex;
@@ -150,9 +320,9 @@ const PublicView = () => {
         background: conic-gradient(
           from 0deg,
           transparent 0deg,
-          #ff00ff 90deg,
-          #00ffff 180deg,
-          #00ff00 270deg,
+          #00e5ff 90deg,
+          #ffc400 180deg,
+          #ff0055 270deg,
           transparent 360deg
         );
         animation: rotateCyber 3s linear infinite;
@@ -162,12 +332,13 @@ const PublicView = () => {
         content: '';
         position: absolute;
         inset: 2px;
-        background: #0f172a;
+        background: #101010;
         border-radius: inherit;
         z-index: -1;
       }
       .cyber-btn.active {
         color: #fff;
+        background: transparent;
         border-color: transparent;
         box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
       }
@@ -177,14 +348,14 @@ const PublicView = () => {
         left: 50%;
         transform: translateX(-50%);
         z-index: 1000;
-        width: 280px;
+        width: 340px;
         height: 55px;
         display: grid;
         grid-template-columns: 55px 1fr 55px;
         align-items: center;
         border-radius: 12px;
         overflow: hidden;
-        background: rgba(15, 23, 42, 0.8);
+        background: transparent;
         border: 1px solid rgba(201, 201, 201, 0.2);
         box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
       }
@@ -198,9 +369,9 @@ const PublicView = () => {
         background: conic-gradient(
           from 0deg,
           transparent 0deg,
-          #ff00ff 90deg,
-          #00ffff 180deg,
-          #00ff00 270deg,
+          #00e5ff 90deg,
+          #ffc400 180deg,
+          #ff0055 270deg,
           transparent 360deg
         );
         animation: rotateCyber 3s linear infinite;
@@ -210,7 +381,7 @@ const PublicView = () => {
         content: '';
         position: absolute;
         inset: 2px;
-        background: #0f172a;
+        background: #101010;
         border-radius: 10px;
         z-index: -1;
       }
@@ -220,12 +391,12 @@ const PublicView = () => {
         object-fit: contain;
         justify-self: center;
         z-index: 2;
-        filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.3));
+        filter: drop-shadow(0 0 8px rgba(148, 163, 184, 0.3));
       }
       .header-title {
         font-family: 'Josefin Sans', sans-serif;
         font-weight: 700;
-        font-size: 26px;
+        font-size: 24px;
         color: #f1f5f9;
         letter-spacing: 0.05em;
         line-height: 1;
@@ -267,7 +438,7 @@ const PublicView = () => {
       .isotype-icon {
         width: 20px;
         height: 20px;
-        filter: drop-shadow(0 0 5px rgba(139, 92, 246, 0.5));
+        filter: drop-shadow(0 0 5px rgba(148, 163, 184, 0.5));
       }
       .user-drawer {
         position: fixed;
@@ -275,7 +446,7 @@ const PublicView = () => {
         left: 0;
         width: 280px;
         height: 100%;
-        background: rgba(15, 23, 42, 0.95);
+        background: rgba(26, 26, 26, 0.95);
         backdrop-filter: blur(20px);
         z-index: 2000;
         transform: translateX(-100%);
@@ -319,8 +490,8 @@ const PublicView = () => {
         gap: 12px;
       }
       .drawer-item:hover {
-        background: rgba(139, 92, 246, 0.2);
-        border-color: rgba(139, 92, 246, 0.4);
+        background: rgba(71, 85, 105, 0.2);
+        border-color: rgba(71, 85, 105, 0.4);
       }
       .modal-overlay {
         position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px);
@@ -328,7 +499,7 @@ const PublicView = () => {
         padding: 20px;
       }
       .modal-content {
-        background: #0f172a; border: 1px solid #334155; border-radius: 16px;
+        background: #101010; border: 1px solid #334155; border-radius: 16px;
         width: 100%; max-width: 400px; padding: 24px; color: white;
         box-shadow: 0 20px 40px rgba(0,0,0,0.5);
       }
@@ -375,20 +546,26 @@ const PublicView = () => {
     const safeAds = Array.isArray(ads) ? ads : [];
     if (safeAds.length === 0 || isFetchingBatch) return;
 
-    // Calculate viewport bounds in world coordinates
-    if (!canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const minX = -transform.x / transform.scale;
-    const minY = -transform.y / transform.scale;
-    const maxX = (rect.width - transform.x) / transform.scale;
-    const maxY = (rect.height - transform.y) / transform.scale;
+    let visibleUnloaded = [];
 
-    // Find ads in viewport that don't have images loaded
-    const visibleUnloaded = safeAds.filter(ad => 
-      ad.x + ad.width >= minX && ad.x <= maxX &&
-      ad.y + ad.height >= minY && ad.y <= maxY &&
-      !loadedImageIds.has(ad.id)
-    ).slice(0, 50); // Fetch in small batches
+    if (isMobile) {
+      // En móvil, como los anuncios rotan en la esfera, simplemente cargamos los que falten por lotes
+      visibleUnloaded = safeAds.filter(ad => !loadedImageIds.has(ad.id)).slice(0, 50);
+    } else {
+      if (!canvasRef.current) return;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const minX = -transform.x / transform.scale;
+      const minY = -transform.y / transform.scale;
+      const maxX = (rect.width - transform.x) / transform.scale;
+      const maxY = (rect.height - transform.y) / transform.scale;
+
+      // Encontrar anuncios en el viewport que no tengan imagen cargada
+      visibleUnloaded = safeAds.filter(ad => 
+        ad.x + ad.width >= minX && ad.x <= maxX &&
+        ad.y + ad.height >= minY && ad.y <= maxY &&
+        !loadedImageIds.has(ad.id)
+      ).slice(0, 50);
+    }
 
     if (visibleUnloaded.length === 0) return;
 
@@ -436,18 +613,25 @@ const PublicView = () => {
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.scale, transform.scale);
     
-    ctx.strokeStyle = '#1e293b';
+    ctx.strokeStyle = '#333333';
     ctx.lineWidth = 0.5;
     
     // 1. Draw all background ads (the grid squares)
     const validAds = Array.isArray(ads) ? ads : [];
-    const filteredAds = validAds.filter(ad => {
-      const isFilteredOut = (selectedCategory && ad.category !== selectedCategory) || 
-                           (selectedBarrio && ad.barrio !== selectedBarrio);
+    // Only display on canvas if it exists (mobile doesn't use canvas anymore either, but kept for legacy)
+    const filteredAdsForCanvas = validAds.filter(ad => {
+      let isFilteredOut = (selectedCategory && ad.category !== selectedCategory) || 
+                           (selectedBarrio && ad.barrio !== selectedBarrio) ||
+                           (selectedZona && ad.zona !== selectedZona);
+      
+      if (showFavoritesOnly && !favoriteAdIds.has(ad.id)) {
+        isFilteredOut = true;
+      }
+      
       return !isFilteredOut;
     });
 
-    filteredAds.forEach(ad => {
+    filteredAdsForCanvas.forEach(ad => {
       if (ad.id === hoveredAd?.id) return;
       
       const img = imageObjects[ad.id];
@@ -463,7 +647,7 @@ const PublicView = () => {
         ctx.drawImage(img, ad.x, ad.y, ad.width, ad.height);
         ctx.filter = 'none';
       } else {
-        ctx.fillStyle = isFilteredOut ? '#1e293b' : '#6366f1';
+        ctx.fillStyle = isFilteredOut ? '#333333' : '#9ca3af';
         ctx.fillRect(ad.x, ad.y, ad.width, ad.height);
       }
     });
@@ -483,11 +667,16 @@ const PublicView = () => {
       const hy = cy - targetSize / 2;
 
       ctx.save();
-      const isFilteredOut = (selectedCategory && hoveredAd.category !== selectedCategory) || 
-                           (selectedBarrio && hoveredAd.barrio !== selectedBarrio);
+      let isFilteredOut = (selectedCategory && hoveredAd.category !== selectedCategory) || 
+                           (selectedBarrio && hoveredAd.barrio !== selectedBarrio) ||
+                           (selectedZona && hoveredAd.zona !== selectedZona);
+      
+      if (showFavoritesOnly && !favoriteAdIds.has(hoveredAd.id)) {
+        isFilteredOut = true;
+      }
 
       if (!isFilteredOut) {
-        ctx.shadowColor = '#6366f1';
+        ctx.shadowColor = '#9ca3af';
         ctx.shadowBlur = 30 / transform.scale;
         ctx.filter = 'none';
       } else {
@@ -500,7 +689,7 @@ const PublicView = () => {
       if (img) {
         ctx.drawImage(img, hx, hy, targetSize, targetSize);
       } else {
-        ctx.fillStyle = isFilteredOut ? '#1e293b' : '#818cf8';
+        ctx.fillStyle = isFilteredOut ? '#333333' : '#cbd5e1';
         ctx.fillRect(hx, hy, targetSize, targetSize);
       }
       ctx.restore();
@@ -513,7 +702,7 @@ const PublicView = () => {
     ctx.lineWidth = 2 / transform.scale;
     ctx.strokeRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-  }, [ads, transform, hoveredAd, imageObjects, selectedCategory, selectedBarrio]);
+  }, [ads, transform, hoveredAd, imageObjects, selectedCategory, selectedBarrio, selectedZona]);
 
   const handleWhatsAppClick = async (e) => {
     if (e) e.preventDefault();
@@ -645,15 +834,7 @@ const PublicView = () => {
   };
 
   return (
-    <div 
-      className="relative w-screen h-screen overflow-hidden bg-slate-950 select-none"
-      onMouseDown={!isMobile ? handleMouseDown : undefined}
-      onMouseMove={!isMobile ? handleMouseMove : undefined}
-      onMouseUp={!isMobile ? handleMouseUp : undefined}
-      onWheel={!isMobile ? handleWheel : undefined}
-      onClick={!isMobile ? handleClick : undefined}
-      style={{ cursor: isMobile ? 'default' : (isDragging ? 'grabbing' : (hoveredAd ? 'pointer' : 'grab')) }}
-    >
+    <div className="relative w-screen h-screen overflow-hidden bg-[#1a1a1a] select-none">
       {/* Menú Lateral (Drawer) */}
       <div className={`drawer-overlay ${menuOpen ? 'open' : ''}`} onClick={() => setMenuOpen(false)} />
       <div className={`user-drawer ${menuOpen ? 'open' : ''}`}>
@@ -665,8 +846,7 @@ const PublicView = () => {
             </h2>
             {isLoggedIn && (
               <p className="text-slate-400 text-xs mt-3 leading-relaxed font-medium">
-                Ya sos parte. Explorá los locales que hacen que Buenos Aires sea única. Todo lo que aparece acá <br/>
-                <span className="text-indigo-400 is-posta-font">¡Es la Posta!</span>
+                Ya eres parte. de los mejores locales que hacen que Buenos Aires sea única. Todo lo que aparece acá
               </p>
             )}
           </div>
@@ -675,15 +855,23 @@ const PublicView = () => {
         {isLoggedIn ? (
           <>
             <button className="drawer-item" onClick={() => setMenuOpen(false)}>
-              <Zap size={18} className="text-indigo-400" />
+              <Zap size={18} className="text-slate-400" />
               <span>Mi Cuenta</span>
             </button>
-            <button className="drawer-item" onClick={() => setMenuOpen(false)}>
-              <Tag size={18} className="text-emerald-400" />
-              <span>Mis Anuncios</span>
+            <button className="drawer-item" onClick={() => { 
+              if (showFavoritesOnly) {
+                setShowFavoritesOnly(false);
+              } else {
+                fetchFavorites();
+                setShowFavoritesOnly(true);
+              }
+              setMenuOpen(false); 
+            }}>
+              <Tag size={18} className={showFavoritesOnly ? "text-emerald-400" : "text-slate-400"} />
+              <span>{showFavoritesOnly ? 'Ver Todos' : 'Mis Favoritos'}</span>
             </button>
             <button className="drawer-item" onClick={() => setMenuOpen(false)}>
-              <Mail size={18} className="text-indigo-400" />
+              <Mail size={18} className="text-slate-400" />
               <span>Mensajes</span>
             </button>
             
@@ -701,7 +889,7 @@ const PublicView = () => {
           </>
         ) : (
           <>
-            <button className="drawer-item bg-indigo-600/20 border-indigo-500/30 text-indigo-300" onClick={() => { setAuthModalMode('login'); setMenuOpen(false); }}>
+            <button className="drawer-item bg-slate-600/20 border-slate-500/30 text-slate-300" onClick={() => { setAuthModalMode('login'); setMenuOpen(false); }}>
               <span>Logearse</span>
             </button>
             <button className="drawer-item bg-emerald-600/20 border-emerald-500/30 text-emerald-300" onClick={() => { setAuthModalMode('register'); setMenuOpen(false); }}>
@@ -732,21 +920,21 @@ const PublicView = () => {
               
               {authModalMode === 'register' && (
                 <div className="flex items-center gap-2 mt-2 mb-4">
-                  <input type="checkbox" id="terms" checked={acceptedTerms} onChange={e=>setAcceptedTerms(e.target.checked)} className="accent-indigo-500" />
+                  <input type="checkbox" id="terms" checked={acceptedTerms} onChange={e=>setAcceptedTerms(e.target.checked)} className="accent-slate-500" />
                   <label htmlFor="terms" className="text-xs text-slate-400">
-                    Acepto los <span className="text-indigo-400 cursor-pointer underline" onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}>Términos y Condiciones</span>
+                    Acepto los <span className="text-slate-400 cursor-pointer underline" onClick={(e) => { e.preventDefault(); setShowTermsModal(true); }}>Términos y Condiciones</span>
                   </label>
                 </div>
               )}
               
-              <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-white font-black uppercase tracking-wider transition-colors mt-2">
+              <button type="submit" className="w-full py-3 bg-slate-600 hover:bg-slate-500 rounded-lg text-white font-black uppercase tracking-wider transition-colors mt-2">
                 {authModalMode === 'login' ? 'Ingresar' : 'Registrarme'}
               </button>
             </form>
             
             <div className="mt-4 text-center text-xs text-slate-400">
               {authModalMode === 'login' ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
-              <span className="text-indigo-400 cursor-pointer underline" onClick={() => { setAuthModalMode(authModalMode === 'login' ? 'register' : 'login'); setAuthError(''); }}>
+              <span className="text-slate-400 cursor-pointer underline" onClick={() => { setAuthModalMode(authModalMode === 'login' ? 'register' : 'login'); setAuthError(''); }}>
                 {authModalMode === 'login' ? 'Regístrate aquí' : 'Inicia Sesión'}
               </span>
             </div>
@@ -758,7 +946,7 @@ const PublicView = () => {
       {showTermsModal && (
         <div className="modal-overlay" style={{ zIndex: 4000 }}>
           <div className="modal-content max-w-lg max-h-[80vh] flex flex-col relative">
-            <h2 className="text-lg font-black text-center mb-4 text-indigo-400">Términos y Condiciones de Uso y Política de Tratamiento de Datos</h2>
+            <h2 className="text-lg font-black text-center mb-4 text-slate-400">Términos y Condiciones de Uso y Política de Tratamiento de Datos</h2>
             <div className="flex-1 overflow-y-auto no-scrollbar text-xs text-slate-300 space-y-4 pr-2">
               <p><strong>1. Aceptación de las Condiciones de Servicio</strong><br/>El acceso y utilización de este sitio web (en adelante, "la Plataforma") atribuye la condición de Usuario, quien, mediante la navegación y/o interacción en el mismo, manifiesta su aceptación plena y sin reservas de las presentes cláusulas. El desconocimiento del contenido de estas condiciones no exime al Usuario de las responsabilidades derivadas de su aceptación técnica.</p>
               <p><strong>2. Consentimiento Informado y Finalidad del Tratamiento</strong><br/>De conformidad con el Art. 5 de la Ley 25.326, el Usuario presta su consentimiento expreso para que los datos recabados de forma directa o indirecta (mediante cookies, metadatos, registros de actividad o formularios) sean incorporados a una base de datos de titularidad privada.</p>
@@ -785,7 +973,7 @@ const PublicView = () => {
             <img src="/favicon.svg" alt="isotype" className="isotype-icon" />
           </button>
         </div>
-        <h1 className="header-title">eslaposta</h1>
+        <h1 className="header-title">EslaPosta</h1>
         <div style={{ width: 55 }} /> {/* Espaciador para balancear */}
       </div>
 
@@ -794,6 +982,7 @@ const PublicView = () => {
           ads={(Array.isArray(ads) ? ads : []).filter(a => {
             if (selectedCategory && a.category !== selectedCategory) return false;
             if (selectedBarrio && a.barrio !== selectedBarrio) return false;
+            if (selectedZona && a.zona !== selectedZona) return false;
             return true;
           })} 
           imageObjects={imageObjects} 
@@ -804,194 +993,39 @@ const PublicView = () => {
           spinTrigger={spinTrigger}
         />
       ) : (
-        <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} className="absolute inset-0" />
+        <DesktopSphereSplitView 
+          ads={displayAds}
+          imageObjects={imageObjects}
+          hoveredAd={hoveredAd}
+          setHoveredAd={setHoveredAd}
+          targetAd={targetAd}
+          setTargetAd={setTargetAd}
+          spinTrigger={spinTrigger}
+          // Filtros
+          selectedCategory={selectedCategory}
+          setSelectedCategory={setSelectedCategory}
+          selectedBarrio={selectedBarrio}
+          setSelectedBarrio={setSelectedBarrio}
+          selectedZona={selectedZona}
+          setSelectedZona={setSelectedZona}
+          filterOpen={filterOpen}
+          setFilterOpen={setFilterOpen}
+          barrioFilterOpen={barrioFilterOpen}
+          setBarrioFilterOpen={setBarrioFilterOpen}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          categories={categories}
+          setSpinTrigger={setSpinTrigger}
+          featuredAd={featuredAd}
+          showIsland={showIsland}
+          setShowIsland={setShowIsland}
+          isLoggedIn={isLoggedIn}
+        />
       )}
 
-      {/* Desktop Filters (Top Left) */}
-      {!isMobile && (
-        <div className="absolute top-5 left-5 z-[60] pointer-events-auto flex flex-col gap-3">
-          <button
-            onClick={(e) => { e.stopPropagation(); setFilterOpen(!filterOpen); setBarrioFilterOpen(false); }}
-            className={`w-52 flex items-center justify-between px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 backdrop-blur-xl border shadow-lg ${
-              selectedCategory
-                ? 'bg-indigo-600/90 text-white border-indigo-400/40 shadow-indigo-600/30'
-                : 'bg-slate-900/80 text-slate-300 border-white/10 shadow-black/20 hover:bg-slate-800/90 hover:border-white/15'
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              <Filter size={14} />
-              <span className="truncate">{selectedCategory || 'Filtrar Rubro'}</span>
-            </div>
-            <ChevronDown size={14} className={`transition-transform duration-300 ${filterOpen ? 'rotate-180' : ''}`} />
-          </button>
 
-          <button
-            onClick={(e) => { e.stopPropagation(); setBarrioFilterOpen(!barrioFilterOpen); setFilterOpen(false); }}
-            className={`w-52 flex items-center justify-between px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 backdrop-blur-xl border shadow-lg ${
-              selectedBarrio
-                ? 'bg-emerald-600/90 text-white border-emerald-400/40 shadow-emerald-600/30'
-                : 'bg-slate-900/80 text-slate-300 border-white/10 shadow-black/20 hover:bg-slate-800/90 hover:border-white/15'
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              <MapPin size={14} />
-              <span className="truncate">{selectedBarrio || 'Filtrar Barrio'}</span>
-            </div>
-            <ChevronDown size={14} className={`transition-transform duration-300 ${barrioFilterOpen ? 'rotate-180' : ''}`} />
-          </button>
-        </div>
-      )}
 
-      {/* Dropdown Portals (Global - Center on mobile, Top-left on desktop) */}
-      <div 
-        onClick={() => { setFilterOpen(false); setBarrioFilterOpen(false); }}
-        className={`fixed z-[100] pointer-events-none flex flex-col gap-3 transition-all duration-500 ${
-        isMobile 
-          ? 'hidden' 
-          : 'top-5 left-5'
-      } ${!isMobile && (filterOpen || barrioFilterOpen) ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
-          
-          {/* Rubro Dropdown Container */}
-          <div className={`relative pointer-events-auto transition-all duration-300 ${
-            filterOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0 hidden'
-          }`}>
-            <div
-              className={`w-80 max-h-[60vh] overflow-y-auto no-scrollbar rounded-3xl border border-white/20 bg-slate-900/95 backdrop-blur-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,1)] p-5`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400">Seleccionar Rubro</h3>
-                <button onClick={() => setFilterOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-                  <X size={16} className="text-slate-400" />
-                </button>
-              </div>
 
-              <button
-                onClick={() => { setSelectedCategory(null); setFilterOpen(false); }}
-                className={`w-full flex items-center justify-between px-4 py-4 rounded-2xl mb-4 text-[10px] font-black uppercase tracking-widest transition-all ${
-                  !selectedCategory
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-                    : 'bg-slate-800/50 text-slate-400 border border-white/5 hover:bg-slate-800'
-                }`}
-              >
-                <span>Mostrar Todos</span>
-                {!selectedCategory && <Filter size={12} />}
-              </button>
-              
-              <div className="grid grid-cols-2 gap-3">
-                {(() => {
-                  const arr = (Array.isArray(categories) && categories.length > 0) 
-                    ? categories.map(cat => ({ id: cat.id, name: cat.name }))
-                    : RUBROS.map((r, i) => ({ id: i, name: r }));
-                  
-                  return arr.map(item => {
-                    const isActive = selectedCategory === item.name;
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => { setSelectedCategory(isActive ? null : item.name); setFilterOpen(false); }}
-                        className={`px-4 py-4 rounded-2xl text-[9px] font-black uppercase tracking-wide transition-all text-center border ${
-                          isActive 
-                            ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' 
-                            : 'bg-slate-800/30 border-white/5 text-slate-400 hover:bg-slate-800 hover:text-white hover:border-white/20'
-                        }`}
-                      >
-                        {item.name}
-                      </button>
-                    );
-                  });
-                })()}
-              </div>
-            </div>
-          </div>
-
-          {/* Barrio Dropdown Container */}
-          <div className={`relative pointer-events-auto transition-all duration-300 ${
-            barrioFilterOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0 hidden'
-          }`}>
-            <div
-              className={`w-80 max-h-[60vh] overflow-y-auto no-scrollbar rounded-3xl border border-white/20 bg-slate-900/95 backdrop-blur-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,1)] p-5`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Seleccionar Barrio</h3>
-                <button onClick={() => setBarrioFilterOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
-                  <X size={16} className="text-slate-400" />
-                </button>
-              </div>
-
-              <button
-                onClick={() => { setSelectedBarrio(null); setBarrioFilterOpen(false); }}
-                className={`w-full flex items-center justify-between px-4 py-4 rounded-2xl mb-4 text-[10px] font-black uppercase tracking-widest transition-all ${
-                  !selectedBarrio
-                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
-                    : 'bg-slate-800/50 text-slate-400 border border-white/5 hover:bg-slate-800'
-                }`}
-              >
-                <span>Cualquier Barrio</span>
-                {!selectedBarrio && <MapPin size={12} />}
-              </button>
-
-              <div className="grid grid-cols-2 gap-3">
-                {BARRIOS.map(b => {
-                  const isActive = selectedBarrio === b;
-                  return (
-                    <button
-                      key={b}
-                      onClick={() => { setSelectedBarrio(isActive ? null : b); setBarrioFilterOpen(false); }}
-                      className={`px-4 py-4 rounded-2xl text-[9px] font-black uppercase tracking-wide transition-all text-center border ${
-                        isActive 
-                          ? 'bg-emerald-600 border-emerald-400 text-white shadow-lg' 
-                          : 'bg-slate-800/30 border-white/5 text-slate-400 hover:bg-slate-800 hover:text-white hover:border-white/20'
-                      }`}
-                    >
-                      {b}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-      </div>
-
-      {/* Featured Ad — Bottom Center (Only Desktop) */}
-      {!isMobile && showIsland && featuredAd && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[280px] glass-card border border-indigo-500/30 shadow-[0_-10px_50px_-12px_rgba(79,70,229,0.3)] rounded-[24px] overflow-hidden flex flex-col pointer-events-auto transition-all duration-500 z-50" style={{ animation: 'slideUp 0.5s ease' }}>
-          <button onClick={() => setShowIsland(false)} className="absolute top-2.5 right-2.5 p-1.5 bg-black/50 hover:bg-black/90 rounded-full text-white transition-colors z-10 backdrop-blur-md">
-            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
-          
-          <div className="h-[70px] bg-indigo-950 relative">
-            {featuredAd.image ? <img src={featuredAd.image} className="w-full h-full object-cover opacity-90" alt="" /> : <div className="w-full h-full bg-indigo-600/20" />}
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent" />
-            <div className="absolute top-2 left-3 px-2 py-0.5 bg-indigo-600/80 rounded-full text-[6px] font-black uppercase text-white tracking-widest backdrop-blur-sm">Destacado</div>
-            {featuredAd.category && (
-              <div className="absolute top-2 right-10 px-2 py-0.5 bg-emerald-600/80 rounded-full text-[6px] font-black uppercase text-white tracking-widest backdrop-blur-sm flex items-center gap-1">
-                <Tag size={6} /> {featuredAd.category}
-              </div>
-            )}
-          </div>
-          
-          <div className="bg-slate-950 p-3 cursor-pointer hover:bg-slate-900 transition-colors relative" onClick={() => window.open(featuredAd.url.startsWith('http') ? featuredAd.url : `https://${featuredAd.url}`, '_blank')}>
-            <span className="text-[12px] text-white font-black uppercase leading-tight truncate block drop-shadow-md">{featuredAd.name || 'Anunciante'}</span>
-            <span className="text-[9px] text-indigo-400 truncate block font-bold mt-0.5">{featuredAd.url}</span>
-            
-            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
-              {featuredAd.phone && (
-                <span className="text-[8px] text-slate-400 flex items-center gap-1">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                  {featuredAd.phone}
-                </span>
-              )}
-              {featuredAd.location && (
-                <span className="text-[8px] text-indigo-300 flex items-center gap-1">
-                  <MapPin size={8} /> {featuredAd.location}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MODAL DE RUBROS FLOTANTE */}
       {isMobile && filterOpen && (
@@ -1073,35 +1107,65 @@ const PublicView = () => {
           }}>
             <h2 style={{ color: 'white', textAlign: 'center', marginBottom: '20px', fontSize: '16px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '1px' }}>
               <MapPin size={16} style={{ display: 'inline', marginRight: '5px', verticalAlign: 'text-bottom' }} />
-              Seleccionar Barrio
+              {selectedBarrio ? `Seleccionar Zona en ${selectedBarrio.split(' ')[0]}` : 'Seleccionar Ciudad'}
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <button 
-                onClick={() => {
-                  setSelectedBarrio(null);
-                  setSpinTrigger(prev => prev + 1);
-                  setBarrioFilterOpen(false);
-                }} 
-                className={`cyber-btn ${!selectedBarrio ? 'active' : ''}`} 
-                style={{ padding: '12px', fontSize: '10px', fontWeight: '900', borderRadius: '8px' }}
-              >
-                TODOS (CIUDAD ENTERA)
-              </button>
-              {BARRIOS.map(b => (
+            {selectedBarrio && ZONAS_POR_CIUDAD[selectedBarrio] ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <button 
-                  key={b} 
+                  onClick={() => { setSelectedZona(null); setBarrioFilterOpen(false); }}
+                  className={`cyber-btn ${!selectedZona ? 'active' : ''}`} 
+                  style={{ width: '100%', height: '45px', borderRadius: '12px', fontSize: '12px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '1px', color: !selectedZona ? '#fff' : '#94a3b8' }}
+                >
+                  Cualquier Zona
+                </button>
+                {ZONAS_POR_CIUDAD[selectedBarrio].map(z => (
+                  <button 
+                    key={z}
+                    onClick={() => { setSelectedZona(z); setBarrioFilterOpen(false); }}
+                    className={`cyber-btn ${selectedZona === z ? 'active' : ''}`} 
+                    style={{ width: '100%', padding: '12px', borderRadius: '8px', fontSize: '10px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '1px', color: selectedZona === z ? '#fff' : '#94a3b8' }}
+                  >
+                    {z}
+                  </button>
+                ))}
+                <button 
+                  onClick={() => { setSelectedBarrio(null); setSelectedZona(null); }} 
+                  style={{ marginTop: '10px', color: '#94a3b8', textDecoration: 'underline', background: 'none', border: 'none', padding: '10px', width: '100%' }}
+                >
+                  Volver a Ciudades
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button 
                   onClick={() => {
-                    setSelectedBarrio(b);
+                    setSelectedBarrio(null);
+                    setSelectedZona(null);
                     setSpinTrigger(prev => prev + 1);
                     setBarrioFilterOpen(false);
                   }} 
-                  className={`cyber-btn ${selectedBarrio === b ? 'active' : ''}`} 
+                  className={`cyber-btn ${!selectedBarrio ? 'active' : ''}`} 
                   style={{ padding: '12px', fontSize: '10px', fontWeight: '900', borderRadius: '8px' }}
                 >
-                  {b.toUpperCase()}
+                  TODAS
                 </button>
-              ))}
-            </div>
+                {BARRIOS.map(b => (
+                  <button 
+                    key={b} 
+                    onClick={() => {
+                      setSelectedBarrio(b);
+                      setSelectedZona(null);
+                      setSpinTrigger(prev => prev + 1);
+                      if (!ZONAS_POR_CIUDAD[b]) setBarrioFilterOpen(false);
+                    }} 
+                    className={`cyber-btn ${selectedBarrio === b ? 'active' : ''}`} 
+                    style={{ padding: '12px', fontSize: '10px', fontWeight: '900', borderRadius: '8px' }}
+                  >
+                    {b.split(' ')[0].toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            )}
             <button 
               onClick={() => setBarrioFilterOpen(false)} 
               style={{ marginTop: '20px', width: '100%', padding: '15px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', fontWeight: '900', textTransform: 'uppercase', fontSize: '12px', cursor: 'pointer' }}
@@ -1112,91 +1176,7 @@ const PublicView = () => {
         </div>
       )}
 
-      {/* Side Details Panel (Only Desktop) */}
-      {!isMobile && (
-        <div className={`fixed z-[70] transition-all duration-500 transform top-20 right-6 w-72 ${hoveredAd ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}`}>
-          {hoveredAd && (
-            <div className="glass-card overflow-hidden border border-indigo-500/30 shadow-[0_20px_50px_-12px_rgba(79,70,229,0.3)] h-full overflow-y-auto no-scrollbar rounded-[24px]">
-              {/* Header / Category */}
-              <div className="bg-indigo-600/20 px-4 py-2 border-b border-indigo-500/20 flex items-center justify-between gap-2">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-300">Detalles</span>
-                <div className="flex gap-1.5 overflow-hidden">
-                  <span className="text-[8px] bg-indigo-500/40 text-white px-2 py-0.5 rounded-full font-bold uppercase whitespace-nowrap">{hoveredAd.category || 'General'}</span>
-                  {hoveredAd.barrio && <span className="text-[8px] bg-emerald-500/40 text-white px-2 py-0.5 rounded-full font-bold uppercase whitespace-nowrap">{hoveredAd.barrio}</span>}
-                </div>
-              </div>
 
-              {/* Brand Logo / Name */}
-              <div className="p-5 bg-gradient-to-b from-indigo-950/50 to-transparent">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-16 h-16 rounded-2xl bg-slate-950 border border-indigo-500/30 overflow-hidden flex-shrink-0 shadow-xl">
-                    {imageObjects[hoveredAd.id] ? (
-                      <img src={imageObjects[hoveredAd.id].src} className="w-full h-full object-cover" alt="" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-indigo-950">
-                        <ImageIcon className="text-indigo-800" size={24} />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h2 className="text-xl font-black text-white uppercase leading-tight truncate">{hoveredAd.name || 'ANUNCIANTE'}</h2>
-                    <div className="flex items-center gap-1.5 text-indigo-400 mt-1">
-                      <ExternalLink size={10} />
-                      <span className="text-[10px] font-bold truncate">{hoveredAd.url}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Data Grid */}
-                <div className="space-y-3">
-                  {hoveredAd.phone && (
-                    <div className="flex items-center justify-between py-2 border-b border-white/5">
-                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2"><Phone size={10} /> Teléfono</span>
-                      <span className="text-[10px] font-black text-slate-200">{hoveredAd.phone}</span>
-                    </div>
-                  )}
-                  {hoveredAd.email && (
-                    <div className="flex items-center justify-between py-2 border-b border-white/5">
-                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2"><Mail size={10} /> Email</span>
-                      <span className="text-[10px] font-black text-slate-200 truncate max-w-[120px]">{hoveredAd.email}</span>
-                    </div>
-                  )}
-                  {hoveredAd.location && (
-                    <div className="flex flex-col gap-1 py-2 border-b border-white/5">
-                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2"><MapPin size={10} /> Ubicación Física</span>
-                      <span className="text-[10px] font-black text-indigo-300 italic">{hoveredAd.location}</span>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 gap-4 mt-2">
-                    <div className="flex flex-col">
-                      <span className="text-[8px] font-bold text-slate-600 uppercase tracking-widest mb-1">Posición</span>
-                      <span className="text-[10px] font-black text-white">X:{hoveredAd.x} Y:{hoveredAd.y}</span>
-                    </div>
-                    <div className="flex flex-col items-end">
-                      <span className="text-[8px] font-bold text-slate-600 uppercase tracking-widest mb-1">Tamaño</span>
-                      <span className="text-[10px] font-black text-white">{hoveredAd.width}x{hoveredAd.height}px</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer / Expiration */}
-              <div className="bg-slate-950/80 p-4 border-t border-white/5 flex items-center justify-between">
-                <div className="flex flex-col">
-                  <span className="text-[7px] font-bold text-slate-500 uppercase tracking-widest">Estado</span>
-                  <span className="text-[9px] font-black text-emerald-400 uppercase tracking-tighter">MAPA ACTIVO ✓</span>
-                </div>
-                {hoveredAd.expiration_date && (
-                  <div className="flex flex-col items-end">
-                    <span className="text-[7px] font-bold text-slate-500 uppercase tracking-widest">Expira</span>
-                    <span className="text-[9px] font-black text-red-400 uppercase tracking-tighter underline decoration-red-400/30">{hoveredAd.expiration_date}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Pure Inline CSS Mobile Bottom Bar (20% height) */}
       {isMobile && (
@@ -1221,7 +1201,7 @@ const PublicView = () => {
                      style={{ 
                        margin: 0, fontSize: '18px', fontWeight: '900', textTransform: 'uppercase', 
                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', 
-                       letterSpacing: '0.5px', color: '#6366f1', cursor: 'pointer'
+                       letterSpacing: '0.5px', color: '#9ca3af', cursor: 'pointer'
                      }}
                    >
                      {hoveredAd.name || 'ANUNCIANTE'}
@@ -1231,24 +1211,34 @@ const PublicView = () => {
                        {hoveredAd.category || 'General'}
                      </span>
                      {hoveredAd.barrio && (
-                       <span style={{ fontSize: '8px', backgroundColor: 'rgba(16,185,129,0.2)', color: '#6ee7b7', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: '900', border: '1px solid rgba(16,185,129,0.3)' }}>
-                         {hoveredAd.barrio}
-                       </span>
+                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                         <span style={{ fontSize: '10px', color: '#10b981', fontWeight: '900', background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '12px' }}>
+                           {hoveredAd.zona ? `${hoveredAd.barrio} - ${hoveredAd.zona}` : hoveredAd.barrio}
+                         </span>
+                        </div>
                      )}
                    </div>
                  </div>
 
                  {/* Marquee Section (Espacio de noticias a la derecha) */}
-                 <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative', height: '30px', display: 'flex', alignItems: 'center' }}>
-                    {hoveredAd.description ? (
-                      <div className="marquee-text">
-                        {hoveredAd.description}
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '8px', color: '#334155', fontStyle: 'italic', textAlign: 'right', width: '100%' }}>
-                        SIN DESCRIPCIÓN
-                      </div>
-                    )}
+                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center', gap: '4px' }}>
+                   <div style={{ width: '100%', overflow: 'hidden', position: 'relative', height: '18px', display: 'flex', alignItems: 'center' }}>
+                     {hoveredAd.description ? (
+                       <div className="marquee-text">
+                         {hoveredAd.description}
+                       </div>
+                     ) : (
+                       <div style={{ fontSize: '8px', color: '#334155', fontStyle: 'italic', textAlign: 'right', width: '100%' }}>
+                         SIN DESCRIPCIÓN
+                       </div>
+                     )}
+                   </div>
+                   <StarRating 
+                     initialRating={adRating.avg} 
+                     count={adRating.count} 
+                     onRate={handleRate}
+                     readOnly={!isLoggedIn}
+                   />
                  </div>
                </div>
             ) : (
@@ -1256,6 +1246,63 @@ const PublicView = () => {
                   <MapPin size={14} /> Gira la esfera o usa GPS
                </div>
             )}
+          </div>
+
+          {/* Buscador Inteligente Mobile */}
+          <div style={{ padding: '10px 15px', backgroundColor: '#020617' }}>
+            <div style={{ marginBottom: '12px' }}>
+              <p style={{ 
+                color: '#94a3b8', 
+                fontSize: '10px', 
+                fontWeight: '900', 
+                textTransform: 'uppercase', 
+                letterSpacing: '1px',
+                textAlign: 'center',
+                marginBottom: '8px'
+              }}>
+                lo mejor de buenos aires esta acá buscalo facil y rapido
+              </p>
+              <div style={{ 
+                height: '2px', 
+                width: '100%', 
+                background: 'linear-gradient(90deg, transparent, #6366f1, #a855f7, transparent)',
+                backgroundSize: '200% 100%',
+                animation: 'shimmerLine 3s linear infinite',
+                borderRadius: '2px'
+              }} />
+            </div>
+            <div style={{ position: 'relative', width: '100%' }}>
+              <input 
+                type="text"
+                placeholder="Busca por nombre, categoría o zona..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  height: '45px',
+                  backgroundColor: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '12px',
+                  padding: '0 40px 0 15px',
+                  color: 'white',
+                  fontSize: '14px',
+                  outline: 'none',
+                  transition: 'all 0.3s ease'
+                }}
+                onFocus={(e) => e.target.style.borderColor = '#6366f1'}
+                onBlur={(e) => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+              />
+              <Filter 
+                size={18} 
+                style={{ 
+                  position: 'absolute', 
+                  right: '15px', 
+                  top: '50%', 
+                  transform: 'translateY(-50%)',
+                  color: searchQuery ? '#6366f1' : '#64748b'
+                }} 
+              />
+            </div>
           </div>
 
           {/* Botonera de Acciones (Filtros y Mapa) */}
@@ -1274,7 +1321,7 @@ const PublicView = () => {
               className={`cyber-btn ${selectedBarrio ? 'active' : ''}`}
               style={{ flex: 1, height: '40px', borderRadius: '10px', fontSize: '9px', fontWeight: '900', color: '#c9c9c9' }}
             >
-              BARRIO: {selectedBarrio || 'TODOS'}
+              CIUDAD: {selectedZona || selectedBarrio || 'TODAS'}
             </button>
             <button 
               onClick={() => {

@@ -27,15 +27,50 @@ const RUBROS = [
   'Restaurante', 'Heladeria', 'Pintureria'
 ];
 
+const ZONAS_POR_CIUDAD = {
+  'Palermo': [
+    'Palermo Soho', 'Palermo Hollywood', 'Palermo Chico', 'Las Cañitas', 'Palermo Nuevo'
+  ],
+  'Belgrano': [
+    'Belgrano R', 'Belgrano C', 'Bajo Belgrano'
+  ],
+  'Recoleta': [
+    'Recoleta', 'Barrio Norte'
+  ],
+  'Caballito': [
+    'Caballito', 'Parque Centenario', 'Primera Junta'
+  ],
+  'San Telmo': [
+    'San Telmo', 'Montserrat'
+  ],
+  'Villa Urquiza': [
+    'Villa Urquiza', 'Villa Ortúzar', 'Parque Chas'
+  ],
+  'Flores': [
+    'Flores', 'Floresta'
+  ],
+  'Almagro': [
+    'Almagro', 'Boedo'
+  ],
+  'Balvanera': [
+    'Balvanera', 'Once', 'Congreso'
+  ],
+  'Retiro': [
+    'Retiro', 'Microcentro', 'San Nicolás'
+  ]
+};
+
 const BARRIOS = [
-  'Agronomía', 'Almagro', 'Balvanera', 'Barracas', 'Belgrano', 'Boedo', 'Caballito', 'Chacarita',
-  'Coghlan', 'Colegiales', 'Constitución', 'Flores', 'Floresta', 'La Boca', 'La Paternal',
-  'Liniers', 'Mataderos', 'Monte Castro', 'Monserrat', 'Nueva Pompeya', 'Núñez', 'Palermo',
-  'Parque Avellaneda', 'Parque Chacabuco', 'Parque Chas', 'Parque Patricios', 'Puerto Madero',
-  'Recoleta', 'Retiro', 'Saavedra', 'San Cristóbal', 'San Nicolás', 'San Telmo', 'Vélez Sársfield',
-  'Versalles', 'Villa Crespo', 'Villa del Parque', 'Villa Devoto', 'Villa General Mitre',
-  'Villa Lugano', 'Villa Luro', 'Villa Ortúzar', 'Villa Pueyrredón', 'Villa Real', 'Villa Riachuelo',
-  'Villa Santa Rita', 'Villa Soldati', 'Villa Urquiza'
+  'Palermo',
+  'Belgrano',
+  'Recoleta',
+  'Caballito',
+  'San Telmo',
+  'Villa Urquiza',
+  'Flores',
+  'Almagro',
+  'Balvanera',
+  'Retiro'
 ];
 
 const AdminPanel = () => {
@@ -47,6 +82,7 @@ const AdminPanel = () => {
   const [location, setLocation] = useState('');
   const [category, setCategory] = useState(RUBROS[0]);
   const [barrio, setBarrio] = useState('');
+  const [zona, setZona] = useState('');
   const [description, setDescription] = useState('');
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
@@ -61,6 +97,18 @@ const AdminPanel = () => {
   const [systemUsers, setSystemUsers] = useState([]);
   const [newUser, setNewUser] = useState({ username: '', password: '' });
   const [showUsersModal, setShowUsersModal] = useState(false);
+  
+  const [visitors, setVisitors] = useState([]);
+  const [activeTab, setActiveTab] = useState('ads');
+
+  const fetchVisitors = async (token) => {
+    try {
+      const res = await axios.get('/api/admin/visitors', { headers: { 'x-admin-token': token } });
+      setVisitors(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState(false);
@@ -74,11 +122,20 @@ const AdminPanel = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (adminToken) {
-      setIsAuthenticated(true);
-      fetchAds(adminToken);
-      if (userRole === 'admin') fetchUsers(adminToken);
-    }
+    const loadInitialData = async () => {
+      if (adminToken) {
+        setIsAuthenticated(true);
+        await fetchAds(adminToken);
+        if (userRole === 'admin') {
+          // Secuencial con pequeño retraso para evitar bloqueo HTTP 429 (WAF/DoS protection)
+          await new Promise(resolve => setTimeout(resolve, 300));
+          await fetchUsers(adminToken);
+          await new Promise(resolve => setTimeout(resolve, 300));
+          await fetchVisitors(adminToken);
+        }
+      }
+    };
+    loadInitialData();
   }, []);
 
   const handleLogin = async () => {
@@ -92,8 +149,13 @@ const AdminPanel = () => {
       localStorage.setItem('admin_token', token);
       localStorage.setItem('admin_role', role);
       localStorage.setItem('admin_username', resUsername);
-      fetchAds(token);
-      if (role === 'admin') fetchUsers(token);
+      await fetchAds(token);
+      if (role === 'admin') {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        await fetchUsers(token);
+        await new Promise(resolve => setTimeout(resolve, 300));
+        await fetchVisitors(token);
+      }
       setLoginError(false);
     } catch (err) {
       setIsAuthenticated(false);
@@ -161,7 +223,7 @@ const AdminPanel = () => {
     try {
       const resp = await axios.post('/api/ads', {
         url, sector: selectedSector, image: base64Image,
-        name, phone, email, location, category, barrio, description, lat, lng, expiration_date: expirationDate, size
+        name, phone, email, location, category, barrio, zona, description, lat, lng, expiration_date: expirationDate, size
       }, {
         headers: { 'x-admin-token': adminToken }
       });
@@ -182,8 +244,9 @@ const AdminPanel = () => {
           expiration_date: expirationDate
       });
 
-      setUrl(''); setBase64Image(''); setName(''); setPhone(''); setEmail(''); setLocation(''); setCategory(RUBROS[0]); setBarrio(''); setDescription(''); setLat(''); setLng(''); setExpirationDate(''); setSize('10');
-      fetchAds();
+      setUrl(''); setBase64Image(''); setName(''); setPhone(''); setEmail(''); setLocation(''); setCategory(RUBROS[0]); setBarrio(''); setZona(''); setDescription(''); setLat(''); setLng(''); setExpirationDate(''); setSize('10');
+      // Actualizamos estado local sin refrescar listado completo
+      setAds(prevAds => [...prevAds, resp.data]);
       setTimeout(() => setStatus('idle'), 3000);
     } catch (err) {
       setStatus('error');
@@ -194,11 +257,12 @@ const AdminPanel = () => {
   const handleUpdate = async (e) => {
     e.preventDefault();
     try {
-      await axios.put(`/api/ads/${editingAd.id}`, editingAd, {
+      const resp = await axios.put(`/api/ads/${editingAd.id}`, editingAd, {
         headers: { 'x-admin-token': adminToken }
       });
       setEditingAd(null);
-      fetchAds();
+      // Actualizar anuncio localmente
+      setAds(prevAds => prevAds.map(ad => ad.id === editingAd.id ? resp.data : ad));
     } catch (err) {
       console.error(err);
       alert('Error al actualizar. Verifique su token.');
@@ -211,7 +275,8 @@ const AdminPanel = () => {
       await axios.delete(`/api/ads/${id}`, {
         headers: { 'x-admin-token': adminToken }
       });
-      fetchAds();
+      // Eliminar anuncio localmente
+      setAds(prevAds => prevAds.filter(ad => ad.id !== id));
     } catch (err) {
       console.error(err);
       alert('Error al eliminar. Verifique su token.');
@@ -225,9 +290,10 @@ const AdminPanel = () => {
   const createUser = async () => {
     if (!newUser.username || !newUser.password) return;
     try {
-      await axios.post('/api/users', newUser, { headers: { 'x-admin-token': adminToken } });
+      const resp = await axios.post('/api/users', newUser, { headers: { 'x-admin-token': adminToken } });
       setNewUser({ username: '', password: '' });
-      fetchUsers(adminToken);
+      // Actualizar listado local de usuarios
+      setSystemUsers(prevUsers => [...prevUsers, resp.data]);
     } catch (err) { alert('Error al crear usuario. Puede que ya exista.'); }
   };
 
@@ -235,7 +301,8 @@ const AdminPanel = () => {
     if (!window.confirm('¿Eliminar vendedor?')) return;
     try {
       await axios.delete(`/api/users/${id}`, { headers: { 'x-admin-token': adminToken } });
-      fetchUsers(adminToken);
+      // Eliminar vendedor localmente
+      setSystemUsers(prevUsers => prevUsers.filter(u => u.id !== id));
     } catch (err) { console.error('Error', err); }
   };
 
@@ -246,8 +313,8 @@ const AdminPanel = () => {
         : { background: 'rgba(14,165,233,0.08)', color: '#38bdf8' };
     } else if (sectorId.startsWith('centro') || sectorId === 'centro') {
       return isSelected 
-        ? { background: '#6366f1', color: 'white', boxShadow: '0 4px 16px rgba(99,102,241,0.35)' } 
-        : { background: 'rgba(99,102,241,0.08)', color: '#818cf8' };
+        ? { background: '#9ca3af', color: 'white', boxShadow: '0 4px 16px rgba(156,163,175,0.35)' } 
+        : { background: 'rgba(156,163,175,0.08)', color: '#cbd5e1' };
     } else {
       return isSelected 
         ? { background: '#f59e0b', color: 'white', boxShadow: '0 4px 16px rgba(245,158,11,0.35)' } 
@@ -266,7 +333,7 @@ const AdminPanel = () => {
     return (
       <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a' }}>
         <div className="admin-card" style={{ maxWidth: '400px', width: '90%', padding: '40px', textAlign: 'center' }}>
-          <Shield size={48} color="#6366f1" style={{ marginBottom: '20px' }} />
+          <Shield size={48} color="#9ca3af" style={{ marginBottom: '20px' }} />
           <h2 className="admin-title">Acceso al Sistema</h2>
           <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '30px' }}>Ingrese sus credenciales para continuar.</p>
           <input 
@@ -300,7 +367,23 @@ const AdminPanel = () => {
           <h1 className="admin-title">Panel de Control de Anunciantes</h1>
           <p className="admin-subtitle">Gestión estratégica de la grilla de Buenos Aires</p>
         </div>
+        {userRole === 'admin' && (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button onClick={() => setActiveTab('ads')} className={`cyber-btn ${activeTab === 'ads' ? 'active' : ''}`} style={{ padding: '8px 12px', fontSize: '10px' }}>Anuncios</button>
+            <button onClick={() => setActiveTab('visitors')} className={`cyber-btn ${activeTab === 'visitors' ? 'active' : ''}`} style={{ padding: '8px 12px', fontSize: '10px' }}>Usuarios Registrados</button>
+            <button onClick={() => setShowUsersModal(true)} className="cyber-btn" style={{ padding: '8px 12px', fontSize: '10px' }}>Vendedores</button>
+            <button 
+              onClick={() => { handleLogout(); window.location.reload(); }} 
+              className="cyber-btn" 
+              style={{ padding: '8px 12px', fontSize: '10px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}
+            >
+              Cerrar Sesión
+            </button>
+          </div>
+        )}
       </header>
+
+      <div style={{ display: activeTab === 'ads' ? 'block' : 'none' }}>
 
       {/* ===== EDIT MODAL (Bottom Sheet) ===== */}
       {editingAd && (
@@ -309,7 +392,7 @@ const AdminPanel = () => {
             <div className="modal-handle" />
             <div className="modal-header">
               <h3 className="modal-title">
-                <Edit3 size={18} style={{ color: '#818cf8' }} /> Editar Anuncio
+                <Edit3 size={18} style={{ color: '#cbd5e1' }} /> Editar Anuncio
               </h3>
               <button className="modal-close" onClick={() => setEditingAd(null)}>
                 <X size={16} />
@@ -372,12 +455,21 @@ const AdminPanel = () => {
 
               <div className="field-row">
                 <div className="field-group">
-                  <label className="admin-label">Barrio</label>
+                  <label className="admin-label">Ciudad</label>
                   <select className="admin-input" value={editingAd.barrio || ''} onChange={(e) => setEditingAd({ ...editingAd, barrio: e.target.value })}>
-                    <option value="">Seleccionar Barrio...</option>
+                    <option value="">Seleccionar Ciudad...</option>
                     {BARRIOS.map(b => <option key={b} value={b}>{b}</option>)}
                   </select>
                 </div>
+                {ZONAS_POR_CIUDAD[editingAd.barrio] && (
+                  <div className="field-group">
+                    <label className="admin-label">Zona</label>
+                    <select className="admin-input" value={editingAd.zona || ''} onChange={(e) => setEditingAd({ ...editingAd, zona: e.target.value })}>
+                      <option value="">Seleccionar Zona...</option>
+                      {ZONAS_POR_CIUDAD[editingAd.barrio].map(z => <option key={z} value={z}>{z}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div className="field-group">
                   <label className="admin-label">Ubicación</label>
                   <input type="text" className="admin-input" value={editingAd.location || ''} onChange={(e) => setEditingAd({ ...editingAd, location: e.target.value })} placeholder="Dirección..." />
@@ -409,7 +501,7 @@ const AdminPanel = () => {
                 </div>
               </div>
 
-              <button type="submit" className="submit-btn" style={{ marginTop: 8, background: '#6366f1' }}>
+              <button type="submit" className="submit-btn" style={{ marginTop: 8, background: '#9ca3af' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Save size={18} /> Guardar Cambios</span>
               </button>
             </form>
@@ -447,10 +539,10 @@ const AdminPanel = () => {
         {/* ===== FORM TOGGLE ===== */}
         <div className="glass-card" style={{ overflow: 'hidden', border: '1px solid rgba(30,41,59,0.6)' }}>
           <button type="button" onClick={() => setIsFormOpen(!isFormOpen)} className="toggle-btn">
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 900, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, fontWeight: 900, color: '#cbd5e1', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
               <Send size={14} /> Nueva Venta
             </span>
-            {isFormOpen ? <ChevronUp size={18} style={{ color: '#818cf8' }} /> : <ChevronDown size={18} style={{ color: '#818cf8' }} />}
+            {isFormOpen ? <ChevronUp size={18} style={{ color: '#cbd5e1' }} /> : <ChevronDown size={18} style={{ color: '#cbd5e1' }} />}
           </button>
 
           {isFormOpen && (
@@ -458,7 +550,7 @@ const AdminPanel = () => {
               
               {/* ── ETAPA 1: Datos del Cliente ── */}
               <div className="stage-card stage-card--indigo">
-                <h3 className="stage-header" style={{ color: '#818cf8' }}>
+                <h3 className="stage-header" style={{ color: '#cbd5e1' }}>
                   <User size={14} /> Etapa 1 — Datos del Cliente
                 </h3>
                 <div className="field-stack">
@@ -524,12 +616,21 @@ const AdminPanel = () => {
 
                   <div className="field-row">
                     <div className="field-group">
-                      <label className="admin-label"><MapPin size={10} /> Barrio</label>
+                      <label className="admin-label"><MapPin size={10} /> Ciudad</label>
                       <select className="admin-input" value={barrio} onChange={(e) => setBarrio(e.target.value)}>
                         <option value="">Sin definir</option>
                         {BARRIOS.map(b => <option key={b} value={b}>{b}</option>)}
                       </select>
                     </div>
+                    {ZONAS_POR_CIUDAD[barrio] && (
+                      <div className="field-group">
+                        <label className="admin-label"><MapPin size={10} /> Zona</label>
+                        <select className="admin-input" value={zona} onChange={(e) => setZona(e.target.value)}>
+                          <option value="">Sin definir</option>
+                          {ZONAS_POR_CIUDAD[barrio].map(z => <option key={z} value={z}>{z}</option>)}
+                        </select>
+                      </div>
+                    )}
                     <div className="field-group">
                       <label className="admin-label"><MapPin size={10} /> Ubicación</label>
                       <input type="text" className="admin-input" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Dirección..." />
@@ -547,8 +648,8 @@ const AdminPanel = () => {
                     <label className={`upload-zone ${base64Image ? 'upload-zone--filled' : ''}`}>
                       {base64Image ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <img src={base64Image} style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'cover', border: '2px solid #6366f1' }} alt="" />
-                          <span style={{ fontSize: 12, fontWeight: 800, color: '#818cf8', textTransform: 'uppercase' }}>Imagen lista ✓</span>
+                          <img src={base64Image} style={{ width: 44, height: 44, borderRadius: 10, objectFit: 'cover', border: '2px solid #9ca3af' }} alt="" />
+                          <span style={{ fontSize: 12, fontWeight: 800, color: '#cbd5e1', textTransform: 'uppercase' }}>Imagen lista ✓</span>
                         </div>
                       ) : (
                         <>
@@ -672,7 +773,8 @@ const AdminPanel = () => {
                         <span className="history-name">{ad.name || 'Sin Nombre'}</span>
                         <div className="history-meta">
                           <span className="history-tag">{ad.category || 'Rubro'}</span>
-                          <span className="history-tag" style={{ background: 'rgba(52,211,153,0.1)', color: '#34d399' }}>{ad.barrio || 'Sin Barrio'}</span>
+                          <span className="history-tag" style={{ background: 'rgba(52,211,153,0.1)', color: '#34d399' }}>{ad.barrio || 'Sin Ciudad'}</span>
+                          {ad.zona && <span className="history-tag" style={{ background: 'rgba(59,130,246,0.1)', color: '#60a5fa' }}>{ad.zona}</span>}
                           <span className="history-url">{ad.url}</span>
                         </div>
                       </div>
@@ -689,7 +791,7 @@ const AdminPanel = () => {
                     <div className="history-details">
                       {ad.phone && <div className="history-detail-item"><Phone size={10} /> {ad.phone}</div>}
                       {ad.email && <div className="history-detail-item" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><Mail size={10} /> {ad.email}</div>}
-                      {ad.location && <div className="history-detail-item history-detail-item--full" style={{ color: '#818cf8' }}><MapPin size={10} /> {ad.location}</div>}
+                      {ad.location && <div className="history-detail-item history-detail-item--full" style={{ color: '#cbd5e1' }}><MapPin size={10} /> {ad.location}</div>}
                     </div>
                   )}
 
@@ -737,7 +839,47 @@ const AdminPanel = () => {
             </>
           )}
 
-          <div style={{ display: 'flex', gap: '12px' }}>
+        </div> {/* END of ADS TAB */}
+
+        <div style={{ display: activeTab === 'visitors' ? 'block' : 'none' }}>
+          <div className="glass-card" style={{ padding: 20 }}>
+            <h2 style={{ color: '#f8fafc', marginBottom: '20px', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Users size={20} style={{ color: '#00e5ff' }} />
+              Usuarios Registrados ({visitors.length})
+            </h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {visitors.length === 0 ? (
+                <p style={{ color: '#64748b', fontSize: '14px', textAlign: 'center', padding: '20px' }}>No hay usuarios registrados aún.</p>
+              ) : visitors.map(v => (
+                <div key={v.id} className="history-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px' }}>
+                  <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                    <div style={{ width: '40px', height: '40px', borderRadius: '20px', background: 'rgba(0, 229, 255, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00e5ff' }}>
+                      <User size={20} />
+                    </div>
+                    <div>
+                      <p style={{ color: 'white', fontSize: '15px', fontWeight: '800' }}>{v.name}</p>
+                      <p style={{ color: '#94a3b8', fontSize: '12px' }}>{v.email} • {v.phone}</p>
+                      <p style={{ color: '#64748b', fontSize: '10px', marginTop: '4px' }}>Registrado: {new Date(v.created_at).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '16px', textAlign: 'center' }}>
+                    <div>
+                      <p style={{ color: '#a5b4fc', fontSize: '18px', fontWeight: '900' }}>{v.click_count}</p>
+                      <p style={{ color: '#64748b', fontSize: '10px', textTransform: 'uppercase', fontWeight: '700' }}>Clicks</p>
+                    </div>
+                    <div style={{ width: '1px', background: 'rgba(255,255,255,0.1)' }} />
+                    <div>
+                      <p style={{ color: '#34d399', fontSize: '18px', fontWeight: '900' }}>{v.rating_count}</p>
+                      <p style={{ color: '#64748b', fontSize: '10px', textTransform: 'uppercase', fontWeight: '700' }}>Valoraciones</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
             <button onClick={() => navigate('/')} className="back-btn" style={{ flex: 1 }}>
               VOLVER A LA ESFERA
             </button>
@@ -781,7 +923,9 @@ const AdminPanel = () => {
                         </div>
                         <div>
                           <p style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>{u.username}</p>
-                          <p style={{ color: '#64748b', fontSize: '10px', textTransform: 'uppercase' }}>Rol: {u.role}</p>
+                          <p style={{ color: '#64748b', fontSize: '10px', textTransform: 'uppercase' }}>
+                            Rol: {u.role} • <span style={{ color: u.ads_last_month > 0 ? '#34d399' : '#f87171', fontWeight: 'bold' }}>{u.ads_last_month} Negocios</span> este mes
+                          </p>
                         </div>
                       </div>
                       <button onClick={() => deleteUser(u.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '5px' }}>
