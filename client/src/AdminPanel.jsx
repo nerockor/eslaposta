@@ -18,7 +18,7 @@ const SECTORS = [
 ];
 
 const RUBROS = [
-  'Bares', 'Restaurantes',
+  'Bares', 'Restaurantes', 'Diversión',
   'Celulares y Teléfonos', 'Computación', 'Electrodomésticos', 'Hogar, Muebles y Jardín',
   'Moda', 'Ferreteria', 'Deportes y Fitness', 'Juguetes y Bebés', 'Joyas y Relojes',
   'Instrumentos Musicales', 'Libros, Revistas y Comics', 'lavanderia', 'Repuestos de autos',
@@ -53,6 +53,9 @@ const ZONAS_POR_CIUDAD = {
   'Colegiales': [
     'Colegiales'
   ],
+  'Pto Madero': [
+    'Pto Madero', 'Dique 1', 'Dique 2', 'Dique 3', 'Dique 4'
+  ],
   'Balvanera': [
     'Balvanera', 'Once', 'Congreso'
   ],
@@ -70,6 +73,7 @@ const BARRIOS = [
   'Nuñez',
   'Urquiza',
   'Colegiales',
+  'Pto Madero',
   'Balvanera',
   'Retiro'
 ];
