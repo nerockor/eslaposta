@@ -8,13 +8,14 @@ const CANVAS_SIZE = 1000;
 const API_URL = '/api/ads';
 
 const RUBROS = [
+  'Bares', 'Restaurantes',
   'Celulares y Teléfonos', 'Computación', 'Electrodomésticos', 'Hogar, Muebles y Jardín',
   'Moda', 'Ferreteria', 'Deportes y Fitness', 'Juguetes y Bebés', 'Joyas y Relojes',
   'Instrumentos Musicales', 'Libros, Revistas y Comics', 'lavanderia', 'Repuestos de autos',
   'Gimnasio', 'Mascotas', 'supermercado', 'Productos de limpieza', 'Cafeteria',
   'Artículos de cocina', 'Calzado', 'Perfumeria', 'Reparaciones de celular',
   'Mudanzas y fletes', 'Instalación de electrodomésticos', 'peluqueria, Barberia',
-  'Restaurante', 'Heladeria', 'Pintureria'
+  'Heladeria', 'Pintureria'
 ];
 
 const ZONAS_POR_CIUDAD = {
@@ -30,17 +31,17 @@ const ZONAS_POR_CIUDAD = {
   'Caballito': [
     'Caballito', 'Parque Centenario', 'Primera Junta'
   ],
-  'San Telmo': [
-    'San Telmo', 'Montserrat'
+  'Devoto': [
+    'Villa Devoto', 'Villa del Parque'
   ],
-  'Villa Urquiza': [
+  'Nuñez': [
+    'Nuñez', 'Bajo Nuñez'
+  ],
+  'Urquiza': [
     'Villa Urquiza', 'Villa Ortúzar', 'Parque Chas'
   ],
-  'Flores': [
-    'Flores', 'Floresta'
-  ],
-  'Almagro': [
-    'Almagro', 'Boedo'
+  'Colegiales': [
+    'Colegiales'
   ],
   'Balvanera': [
     'Balvanera', 'Once', 'Congreso'
@@ -55,10 +56,10 @@ const BARRIOS = [
   'Belgrano',
   'Recoleta',
   'Caballito',
-  'San Telmo',
-  'Villa Urquiza',
-  'Flores',
-  'Almagro',
+  'Devoto',
+  'Nuñez',
+  'Urquiza',
+  'Colegiales',
   'Balvanera',
   'Retiro'
 ];
